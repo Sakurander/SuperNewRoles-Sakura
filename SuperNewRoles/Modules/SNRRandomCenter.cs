@@ -481,14 +481,20 @@ public static class SNRRandomCenter
 /// </summary>
 public static class SNRRandomCenterUsageExample
 {
+    // 比較対象として、静的インスタンスを持つSystem.Randomを用意
+    private static readonly System.Random s_systemRandom = new();
+
     /// <summary>
-    /// 基本的な使用方法のサンプル
+    /// SNRRandomCenterの基本的な使用方法を示すサンプル
     /// </summary>
     public static void BasicUsageExample()
     {
+        // 固定シードで初期化
+        SNRRandomCenter.InitState(12345);
+
         // 基本的な整数の乱数生成
-        int randomInt = SNRRandomCenter.Next(1, 100);
-        Logger.Info($"1-99の乱数: {randomInt}");
+        int randomInt = SNRRandomCenter.Range(1, 101); // 1-100の乱数
+        Logger.Info($"1-100の乱数: {randomInt}");
 
         // 浮動小数点数の乱数生成
         float randomFloat = SNRRandomCenter.Range(0.0f, 10.0f);
@@ -499,86 +505,78 @@ public static class SNRRandomCenterUsageExample
         string selectedOption = SNRRandomCenter.ChooseRandom(options);
         Logger.Info($"選択されたオプション: {selectedOption}");
 
-        // 確率による真偽値生成（30%の確率でtrue）
-        bool result = SNRRandomCenter.RandomBool(0.3f);
-        Logger.Info($"30%確率の結果: {result}");
+        // 配列をシャッフル
+        SNRRandomCenter.ShuffleArray(options);
+        Logger.Info($"シャッフル後の配列: {string.Join(", ", options)}");
+
+        // 均一な回転
+        Quaternion rot = SNRRandomCenter.RotationUniform;
+        Logger.Info($"均一な回転: {rot.eulerAngles}");
     }
 
     /// <summary>
-    /// パフォーマンステスト用のメソッド
-    /// 従来の方法とSNRRandomCenterの速度を比較します
+    /// System.Random, UnityEngine.Random, SNRRandomCenterの性能を包括的に比較するベンチマーク。
     /// </summary>
-    public static void PerformanceTestWith_Sys(int iterations = 10000)
+    /// <param name="iterations">各テストの反復回数</param>
+    /// <param name="runs">平均を取るためのテスト実行回数</param>
+    public static void RunComprehensiveBenchmark(int iterations = 100000, int runs = 5)
     {
-        Logger.Info("=== パフォーマンステスト開始 ===");
+        Logger.Info($"=== 包括的ベンチマーク開始 (反復:{iterations}回, 実行:{runs}回) ===");
 
-        // 従来の方法（毎回new Random()）
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        for (int i = 0; i < iterations; i++)
+        var systemTimes = new List<double>();
+        var unityTimes = new List<double>();
+        var snrTimes = new List<double>();
+        var stopwatch = new System.Diagnostics.Stopwatch();
+
+        // --- int型乱数の比較 ---
+        Logger.Info("\n--- 整数乱数 (Range(0, 100)) の比較 ---");
+        for (int i = 0; i < runs; i++)
         {
-            var random = new System.Random();
-            int value = random.Next(1, 100);
-        }
-        stopwatch.Stop();
-        long traditionalTime = stopwatch.ElapsedMilliseconds;
+            stopwatch.Restart();
+            for (int j = 0; j < iterations; j++) { int val = s_systemRandom.Next(0, 100); }
+            systemTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
 
-        // SNRRandomCenter使用
-        stopwatch.Restart();
-        for (int i = 0; i < iterations; i++)
+            stopwatch.Restart();
+            for (int j = 0; j < iterations; j++) { int val = UnityEngine.Random.Range(0, 100); }
+            unityTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
+
+            stopwatch.Restart();
+            for (int j = 0; j < iterations; j++) { int val = SNRRandomCenter.Range(0, 100); }
+            snrTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
+        }
+        LogAverageResults("System.Random.Next", systemTimes);
+        LogAverageResults("UnityEngine.Random.Range", unityTimes);
+        LogAverageResults("SNRRandomCenter.Range", snrTimes);
+        systemTimes.Clear(); unityTimes.Clear(); snrTimes.Clear();
+
+        // --- float型乱数の比較 ---
+        Logger.Info("\n--- float/double型乱数 (0.0-1.0) の比較 ---");
+        for (int i = 0; i < runs; i++)
         {
-            int value = SNRRandomCenter.Next(1, 100);
-        }
-        stopwatch.Stop();
-        long optimizedTime = stopwatch.ElapsedMilliseconds;
+            stopwatch.Restart();
+            for (int j = 0; j < iterations; j++) { double val = s_systemRandom.NextDouble(); }
+            systemTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
 
-        Logger.Info($"従来の方法: {traditionalTime}ms");
-        Logger.Info($"SNRRandomCenter: {optimizedTime}ms");
-        Logger.Info($"改善倍率: {(float)traditionalTime / optimizedTime:F2}x");
+            stopwatch.Restart();
+            for (int j = 0; j < iterations; j++) { float val = UnityEngine.Random.value; }
+            unityTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
+
+            stopwatch.Restart();
+            for (int j = 0; j < iterations; j++) { float val = SNRRandomCenter.Value; }
+            snrTimes.Add(stopwatch.Elapsed.TotalMilliseconds);
+        }
+        LogAverageResults("System.Random.NextDouble", systemTimes);
+        LogAverageResults("UnityEngine.Random.value", unityTimes);
+        LogAverageResults("SNRRandomCenter.Value", snrTimes);
+
+        Logger.Info("\n=== ベンチマーク終了 ===");
     }
 
-    public static void PerformanceTestWith_UE(int iterations = 100000)
+    private static void LogAverageResults(string testName, List<double> times)
     {
-        Logger.Info($"=== パフォーマンステスト開始 ({iterations}回) ===");
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-        // UnityEngine.Random.value との比較
-        stopwatch.Restart();
-        for (int i = 0; i < iterations; i++)
-        {
-            float value = UnityEngine.Random.value;
-        }
-        stopwatch.Stop();
-        Logger.Info($"[UnityEngine.Random.value] 時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
-
-        // SNRRandomCenter.Value との比較
-        stopwatch.Restart();
-        for (int i = 0; i < iterations; i++)
-        {
-            float value = SNRRandomCenter.Value;
-        }
-        stopwatch.Stop();
-        Logger.Info($"[SNRRandomCenter.Value]   時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
-
-        Logger.Info("---");
-
-        // UnityEngine.Random.Range(int) との比較
-        stopwatch.Restart();
-        for (int i = 0; i < iterations; i++)
-        {
-            int value = UnityEngine.Random.Range(0, 100);
-        }
-        stopwatch.Stop();
-        Logger.Info($"[UnityEngine.Random.Range(int)] 時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
-
-        // SNRRandomCenter.Range(int) との比較
-        stopwatch.Restart();
-        for (int i = 0; i < iterations; i++)
-        {
-            int value = SNRRandomCenter.Range(0, 100);
-        }
-        stopwatch.Stop();
-        Logger.Info($"[SNRRandomCenter.Range(int)]   時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
-
-        Logger.Info("=== パフォーマンステスト終了 ===");
+        double average = 0;
+        foreach (var time in times) average += time;
+        average /= times.Count;
+        Logger.Info($"[{testName,-28}] 平均時間: {average:F4} ms");
     }
 }
