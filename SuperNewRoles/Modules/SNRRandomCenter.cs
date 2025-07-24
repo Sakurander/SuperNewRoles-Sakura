@@ -475,7 +475,7 @@ public static class SNRRandomCenterUsageExample
     /// パフォーマンステスト用のメソッド
     /// 従来の方法とSNRRandomCenterの速度を比較します
     /// </summary>
-    public static void PerformanceTest(int iterations = 10000)
+    public static void PerformanceTestWith_Sys(int iterations = 10000)
     {
         Logger.Info("=== パフォーマンステスト開始 ===");
 
@@ -501,5 +501,51 @@ public static class SNRRandomCenterUsageExample
         Logger.Info($"従来の方法: {traditionalTime}ms");
         Logger.Info($"SNRRandomCenter: {optimizedTime}ms");
         Logger.Info($"改善倍率: {(float)traditionalTime / optimizedTime:F2}x");
+    }
+
+    public static void PerformanceTestWith_UE(int iterations = 100000)
+    {
+        Logger.Info($"=== パフォーマンステスト開始 ({iterations}回) ===");
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        // UnityEngine.Random.value との比較
+        stopwatch.Restart();
+        for (int i = 0; i < iterations; i++)
+        {
+            float value = UnityEngine.Random.value;
+        }
+        stopwatch.Stop();
+        Logger.Info($"[UnityEngine.Random.value] 時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
+
+        // SNRRandomCenter.Value との比較
+        stopwatch.Restart();
+        for (int i = 0; i < iterations; i++)
+        {
+            float value = SNRRandomCenter.Value;
+        }
+        stopwatch.Stop();
+        Logger.Info($"[SNRRandomCenter.Value]   時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
+
+        Logger.Info("---");
+
+        // UnityEngine.Random.Range(int) との比較
+        stopwatch.Restart();
+        for (int i = 0; i < iterations; i++)
+        {
+            int value = UnityEngine.Random.Range(0, 100);
+        }
+        stopwatch.Stop();
+        Logger.Info($"[UnityEngine.Random.Range(int)] 時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
+
+        // SNRRandomCenter.Range(int) との比較
+        stopwatch.Restart();
+        for (int i = 0; i < iterations; i++)
+        {
+            int value = SNRRandomCenter.Range(0, 100);
+        }
+        stopwatch.Stop();
+        Logger.Info($"[SNRRandomCenter.Range(int)]   時間: {stopwatch.Elapsed.TotalMilliseconds:F4} ms");
+
+        Logger.Info("=== パフォーマンステスト終了 ===");
     }
 }
