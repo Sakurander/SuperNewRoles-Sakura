@@ -13,11 +13,8 @@ public static class SNRRandomCenter
 {
     #region プライベートフィールド
 
-    /// <summary>
-    /// System.Random用のメイン乱数生成器
-    /// 初期化コストを削減するため、1回だけ初期化して使い回します
-    /// </summary>
-    private static readonly System.Random s_mainRandom;
+    /// <summary> System.Random用のメイン乱数生成器 </summary>
+    private static System.Random s_mainRandom;
 
     /// <summary>
     /// UnityEngine.Random用の現在のシード値
@@ -59,59 +56,72 @@ public static class SNRRandomCenter
     /// </summary>
     static SNRRandomCenter()
     {
-        // デフォルトシードでの初期化
-        // Environment.TickCountを使用してある程度のランダム性を確保
-        int defaultSeed = Environment.TickCount;
-        s_mainRandom = new System.Random(defaultSeed);
-        s_unitySeed = defaultSeed;
-
-        InitializeRandomPool();
+        // 初期化処理をInitStateに集約
+        InitState(Environment.TickCount, false); // 初回はログを抑制しても良い
         s_isInitialized = true;
-
-        Logger.Info($"[SNRRandomCenter] 初期化完了 - シード: {defaultSeed}");
+        Logger.Info($"[SNRRandomCenter] 初回初期化完了 - シード: {s_unitySeed}");
     }
 
     /// <summary>
-    /// カスタムシードで乱数システムを初期化
-    /// ゲーム開始時やリスタート時に呼び出してください
+    /// カスタムシードで乱数システム全体を初期化・リセットします。
+    /// ゲームの再現性を保証するために、このメソッドで状態を管理してください。
     /// </summary>
     /// <param name="seed">使用するシード値</param>
-    public static void InitializeWithSeed(int seed)
+    /// <param name="log">ログを出力するかどうか</param>
+    public static void InitState(int seed, bool log = true)
     {
         // Unity側のシードを設定
         UnityEngine.Random.InitState(seed);
         s_unitySeed = seed;
 
-        // System.Randomは再初期化できないため、新しいシードでプールを再生成
-        RefillRandomPool(seed);
+        // System.Randomも同じシードで再生成する
+        s_mainRandom = new System.Random(seed);
 
-        Logger.Info($"[SNRRandomCenter] カスタムシードで再初期化 - シード: {seed}");
-    }
+        // プールも新しい乱数生成器で補充
+        RefillRandomPool();
 
-    /// <summary>
-    /// 乱数プールの初期化
-    /// 事前に大量の乱数を生成してキューに保存します
-    /// </summary>
-    private static void InitializeRandomPool()
-    {
-        RefillRandomPool(s_mainRandom.Next());
+        if (log)
+        {
+            Logger.Info($"[SNRRandomCenter] 乱数システムを再初期化 - シード: {seed}");
+        }
     }
+    /*
+        /// <summary>
+        /// カスタムシードで乱数システムを初期化
+        /// ゲーム開始時やリスタート時に呼び出してください
+        /// </summary>
+        /// <param name="seed">使用するシード値</param>
+        public static void InitializeWithSeed(int seed)
+        {
+            // Unity側のシードを設定
+            UnityEngine.Random.InitState(seed);
+            s_unitySeed = seed;
+
+            // System.Randomは再初期化できないため、新しいシードでプールを再生成
+            RefillRandomPool(seed);
+
+            Logger.Info($"[SNRRandomCenter] カスタムシードで再初期化 - シード: {seed}");
+        }*/
+    /*
+        /// <summary>
+        /// 乱数プールの初期化
+        /// 事前に大量の乱数を生成してキューに保存します
+        /// </summary>
+        private static void InitializeRandomPool()
+        {
+            RefillRandomPool(s_mainRandom.Next());
+        }*/
 
     /// <summary>
     /// 乱数プールの補充
-    /// 指定されたシードを使用してプールを満杯にします
+    /// 常にs_mainRandomから補充するように変更
     /// </summary>
-    /// <param name="seed">補充用のシード（nullの場合は既存の乱数生成器を使用）</param>
-    private static void RefillRandomPool(int? seed = null)
+    private static void RefillRandomPool()
     {
         s_randomPool.Clear();
-
-        System.Random tempRandom = seed.HasValue ? new System.Random(seed.Value) : s_mainRandom;
-
         for (int i = 0; i < POOL_SIZE; i++)
         {
-            // 0.0f～1.0fの範囲でランダム値を生成
-            s_randomPool.Enqueue((float)tempRandom.NextDouble());
+            s_randomPool.Enqueue((float)s_mainRandom.NextDouble());
         }
     }
 
@@ -312,7 +322,9 @@ public static class SNRRandomCenter
         float v = Range(valueMin, valueMax);
         float a = Range(alphaMin, alphaMax);
 
-        return Color.HSVToRGB(h, s, v, false) + new Color(0, 0, 0, a - 1f);
+        Color rgb = Color.HSVToRGB(h, s, v, false);
+        rgb.a = a;
+        return rgb;
     }
 
     #endregion
