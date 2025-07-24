@@ -1,0 +1,493 @@
+
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace SuperNewRoles.Modules;
+
+/// <summary>
+/// 乱数シードの一元管理によりGC・初期化コスト削減を実現するクラス
+/// SNRで使用される現行の乱数生成器と区別するためSNRRandomCenterという名前にしています
+/// </summary>
+public static class SNRRandomCenter
+{
+    #region プライベートフィールド
+
+    /// <summary>
+    /// System.Random用のメイン乱数生成器
+    /// 初期化コストを削減するため、1回だけ初期化して使い回します
+    /// </summary>
+    private static readonly System.Random s_mainRandom;
+
+    /// <summary>
+    /// UnityEngine.Random用の現在のシード値
+    /// Unity側の乱数も一元管理するために保持します
+    /// </summary>
+    private static int s_unitySeed;
+
+    /// <summary>
+    /// 事前生成された乱数のプール
+    /// 高頻度で乱数が必要な場面でのGC圧迫を軽減します
+    /// </summary>
+    private static readonly Queue<float> s_randomPool = new(POOL_SIZE);
+
+    /// <summary>
+    /// 事前生成される乱数の数
+    /// パフォーマンステストに基づき1000個に設定
+    /// </summary>
+    private const int POOL_SIZE = 1000;
+
+    /// <summary>
+    /// プールの補充を行う閾値
+    /// プール残量がこの数以下になったら自動補充します
+    /// </summary>
+    private const int REFILL_THRESHOLD = 100;
+
+    /// <summary>
+    /// 初期化済みかどうかのフラグ
+    /// 二重初期化を防ぐために使用します
+    /// </summary>
+    private static bool s_isInitialized = false;
+
+    #endregion
+
+    #region 初期化処理
+
+    /// <summary>
+    /// 静的コンストラクタ
+    /// アプリケーション起動時に一度だけ実行されます
+    /// </summary>
+    static SNRRandomCenter()
+    {
+        // デフォルトシードでの初期化
+        // Environment.TickCountを使用してある程度のランダム性を確保
+        int defaultSeed = Environment.TickCount;
+        s_mainRandom = new System.Random(defaultSeed);
+        s_unitySeed = defaultSeed;
+
+        InitializeRandomPool();
+        s_isInitialized = true;
+
+        Logger.Info($"[SNRRandomCenter] 初期化完了 - シード: {defaultSeed}");
+    }
+
+    /// <summary>
+    /// カスタムシードで乱数システムを初期化
+    /// ゲーム開始時やリスタート時に呼び出してください
+    /// </summary>
+    /// <param name="seed">使用するシード値</param>
+    public static void InitializeWithSeed(int seed)
+    {
+        // Unity側のシードを設定
+        UnityEngine.Random.InitState(seed);
+        s_unitySeed = seed;
+
+        // System.Randomは再初期化できないため、新しいシードでプールを再生成
+        RefillRandomPool(seed);
+
+        Logger.Info($"[SNRRandomCenter] カスタムシードで再初期化 - シード: {seed}");
+    }
+
+    /// <summary>
+    /// 乱数プールの初期化
+    /// 事前に大量の乱数を生成してキューに保存します
+    /// </summary>
+    private static void InitializeRandomPool()
+    {
+        RefillRandomPool(s_mainRandom.Next());
+    }
+
+    /// <summary>
+    /// 乱数プールの補充
+    /// 指定されたシードを使用してプールを満杯にします
+    /// </summary>
+    /// <param name="seed">補充用のシード（nullの場合は既存の乱数生成器を使用）</param>
+    private static void RefillRandomPool(int? seed = null)
+    {
+        s_randomPool.Clear();
+
+        System.Random tempRandom = seed.HasValue ? new System.Random(seed.Value) : s_mainRandom;
+
+        for (int i = 0; i < POOL_SIZE; i++)
+        {
+            // 0.0f～1.0fの範囲でランダム値を生成
+            s_randomPool.Enqueue((float)tempRandom.NextDouble());
+        }
+    }
+
+    #endregion
+
+    #region System.Random互換メソッド
+
+    /// <summary>
+    /// 非負の整数の乱数を生成します
+    /// System.Random.Next()と同等の機能です
+    /// </summary>
+    /// <returns>0以上の整数値</returns>
+    public static int Next()
+    {
+        return s_mainRandom.Next();
+    }
+
+    /// <summary>
+    /// 指定した範囲内の整数の乱数を生成します
+    /// System.Random.Next(int maxValue)と同等の機能です
+    /// </summary>
+    /// <param name="maxValue">生成される乱数の排他的上限値</param>
+    /// <returns>0以上maxValue未満の整数値</returns>
+    public static int Next(int maxValue)
+    {
+        return s_mainRandom.Next(maxValue);
+    }
+
+    /// <summary>
+    /// 指定した範囲内の整数の乱数を生成します
+    /// System.Random.Next(int minValue, int maxValue)と同等の機能です
+    /// </summary>
+    /// <param name="minValue">生成される乱数の包含的下限値</param>
+    /// <param name="maxValue">生成される乱数の排他的上限値</param>
+    /// <returns>minValue以上maxValue未満の整数値</returns>
+    public static int Next(int minValue, int maxValue)
+    {
+        return s_mainRandom.Next(minValue, maxValue);
+    }
+
+    /// <summary>
+    /// 0.0以上1.0未満の浮動小数点数の乱数を生成します
+    /// System.Random.NextDouble()と同等の機能です
+    /// </summary>
+    /// <returns>0.0以上1.0未満の浮動小数点数</returns>
+    public static double NextDouble()
+    {
+        return s_mainRandom.NextDouble();
+    }
+
+    /// <summary>
+    /// 指定したバイト配列をランダムな値で埋めます
+    /// System.Random.NextBytes(byte[] buffer)と同等の機能です
+    /// </summary>
+    /// <param name="buffer">ランダムな値で埋めるバイト配列</param>
+    public static void NextBytes(byte[] buffer)
+    {
+        s_mainRandom.NextBytes(buffer);
+    }
+
+    #endregion
+
+    #region UnityEngine.Random互換メソッド
+
+    /// <summary>
+    /// UnityEngine.Random.valueと同等の機能
+    /// プールから高速に値を取得し、必要に応じて自動補充します
+    /// </summary>
+    public static float Value
+    {
+        get
+        {
+            // プールの残量チェックと自動補充
+            if (s_randomPool.Count <= REFILL_THRESHOLD)
+            {
+                RefillRandomPool();
+            }
+
+            return s_randomPool.Dequeue();
+        }
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.Rangeと同等の機能（int版）
+    /// 指定された範囲内の整数を生成します
+    /// </summary>
+    /// <param name="min">最小値（包含）</param>
+    /// <param name="max">最大値（排他）</param>
+    /// <returns>min以上max未満の整数値</returns>
+    public static int Range(int min, int max)
+    {
+        return s_mainRandom.Next(min, max);
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.Rangeと同等の機能（float版）
+    /// 指定された範囲内の浮動小数点数を生成します
+    /// </summary>
+    /// <param name="min">最小値（包含）</param>
+    /// <param name="max">最大値（包含）</param>
+    /// <returns>min以上max以下の浮動小数点数</returns>
+    public static float Range(float min, float max)
+    {
+        return min + (Value * (max - min));
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.insideUnitCircleと同等の機能
+    /// 単位円内のランダムな点を生成します
+    /// </summary>
+    public static Vector2 InsideUnitCircle
+    {
+        get
+        {
+            float angle = Value * 2f * Mathf.PI;
+            float radius = Mathf.Sqrt(Value);
+            return new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
+        }
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.insideUnitSphereと同等の機能
+    /// 単位球内のランダムな点を生成します
+    /// </summary>
+    public static Vector3 InsideUnitSphere
+    {
+        get
+        {
+            float phi = Value * 2f * Mathf.PI;
+            float cosTheta = 1f - 2f * Value;
+            float sinTheta = Mathf.Sqrt(1f - cosTheta * cosTheta);
+            float r = Mathf.Pow(Value, 1f / 3f);
+
+            return new Vector3(
+                r * sinTheta * Mathf.Cos(phi),
+                r * sinTheta * Mathf.Sin(phi),
+                r * cosTheta
+            );
+        }
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.onUnitSphereと同等の機能
+    /// 単位球面上のランダムな点を生成します
+    /// </summary>
+    public static Vector3 OnUnitSphere
+    {
+        get
+        {
+            float phi = Value * 2f * Mathf.PI;
+            float cosTheta = 1f - 2f * Value;
+            float sinTheta = Mathf.Sqrt(1f - cosTheta * cosTheta);
+
+            return new Vector3(
+                sinTheta * Mathf.Cos(phi),
+                sinTheta * Mathf.Sin(phi),
+                cosTheta
+            );
+        }
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.rotationと同等の機能
+    /// ランダムな回転を生成します
+    /// </summary>
+    public static Quaternion Rotation
+    {
+        get
+        {
+            return Quaternion.Euler(
+                Range(0f, 360f),
+                Range(0f, 360f),
+                Range(0f, 360f)
+            );
+        }
+    }
+
+    /// <summary>
+    /// UnityEngine.Random.ColorHSVと同等の機能
+    /// HSV色空間でランダムな色を生成します
+    /// </summary>
+    /// <param name="hueMin">色相の最小値</param>
+    /// <param name="hueMax">色相の最大値</param>
+    /// <param name="saturationMin">彩度の最小値</param>
+    /// <param name="saturationMax">彩度の最大値</param>
+    /// <param name="valueMin">明度の最小値</param>
+    /// <param name="valueMax">明度の最大値</param>
+    /// <param name="alphaMin">アルファの最小値</param>
+    /// <param name="alphaMax">アルファの最大値</param>
+    /// <returns>ランダムな色</returns>
+    public static Color ColorHSV(float hueMin = 0f, float hueMax = 1f,
+                                 float saturationMin = 0f, float saturationMax = 1f,
+                                 float valueMin = 0f, float valueMax = 1f,
+                                 float alphaMin = 1f, float alphaMax = 1f)
+    {
+        float h = Range(hueMin, hueMax);
+        float s = Range(saturationMin, saturationMax);
+        float v = Range(valueMin, valueMax);
+        float a = Range(alphaMin, alphaMax);
+
+        return Color.HSVToRGB(h, s, v, false) + new Color(0, 0, 0, a - 1f);
+    }
+
+    #endregion
+
+    #region 拡張機能
+
+    /// <summary>
+    /// 配列からランダムな要素を選択します
+    /// 高頻度で使用される処理のため専用メソッドを用意
+    /// </summary>
+    /// <typeparam name="T">配列の要素型</typeparam>
+    /// <param name="array">選択元の配列</param>
+    /// <returns>配列からランダムに選択された要素</returns>
+    public static T ChooseRandom<T>(T[] array)
+    {
+        if (array == null || array.Length == 0)
+            throw new ArgumentException("配列が null か空です", nameof(array));
+
+        return array[Range(0, array.Length)];
+    }
+
+    /// <summary>
+    /// リストからランダムな要素を選択します
+    /// </summary>
+    /// <typeparam name="T">リストの要素型</typeparam>
+    /// <param name="list">選択元のリスト</param>
+    /// <returns>リストからランダムに選択された要素</returns>
+    public static T ChooseRandom<T>(IList<T> list)
+    {
+        if (list == null || list.Count == 0)
+            throw new ArgumentException("リストが null か空です", nameof(list));
+
+        return list[Range(0, list.Count)];
+    }
+
+    /// <summary>
+    /// 真偽値をランダムに生成します
+    /// 指定した確率でtrueを返します
+    /// </summary>
+    /// <param name="probability">trueが返される確率（0.0～1.0）</param>
+    /// <returns>ランダムな真偽値</returns>
+    public static bool RandomBool(float probability = 0.5f)
+    {
+        return Value < probability;
+    }
+
+    /// <summary>
+    /// 重み付きランダム選択
+    /// 各要素に重みを持たせてランダム選択を行います
+    /// </summary>
+    /// <typeparam name="T">要素の型</typeparam>
+    /// <param name="items">選択候補のアイテム配列</param>
+    /// <param name="weights">各アイテムの重み配列</param>
+    /// <returns>重みに基づいてランダム選択された要素</returns>
+    public static T WeightedRandom<T>(T[] items, float[] weights)
+    {
+        if (items == null || weights == null)
+            throw new ArgumentNullException("items または weights が null です");
+
+        if (items.Length != weights.Length)
+            throw new ArgumentException("items と weights の長さが一致しません");
+
+        float totalWeight = 0f;
+        for (int i = 0; i < weights.Length; i++)
+        {
+            totalWeight += weights[i];
+        }
+
+        float randomValue = Value * totalWeight;
+        float currentWeight = 0f;
+
+        for (int i = 0; i < items.Length; i++)
+        {
+            currentWeight += weights[i];
+            if (randomValue <= currentWeight)
+            {
+                return items[i];
+            }
+        }
+
+        return items[items.Length - 1];
+    }
+
+    #endregion
+
+    #region デバッグ・統計情報
+
+    /// <summary>
+    /// 現在のプール状況をログ出力します
+    /// デバッグ用の情報取得に使用してください
+    /// </summary>
+    public static void LogPoolStatus()
+    {
+        Logger.Info($"[SNRRandomCenter] プール残量: {s_randomPool.Count}/{POOL_SIZE}");
+    }
+
+    /// <summary>
+    /// 乱数生成器の統計情報を取得します
+    /// </summary>
+    /// <returns>統計情報を含む文字列</returns>
+    public static string GetStatistics()
+    {
+        return $"プール容量: {POOL_SIZE}, 現在の残量: {s_randomPool.Count}, 補充閾値: {REFILL_THRESHOLD}";
+    }
+
+    /// <summary>
+    /// 現在使用中のシード値を取得します
+    /// </summary>
+    /// <returns>Unity側の現在のシード値</returns>
+    public static int GetCurrentSeed()
+    {
+        return s_unitySeed;
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// SNRRandomCenterの使用例とベンチマーク用のサンプルクラス
+/// 実際の使用方法の参考にしてください
+/// </summary>
+public static class SNRRandomCenterUsageExample
+{
+    /// <summary>
+    /// 基本的な使用方法のサンプル
+    /// </summary>
+    public static void BasicUsageExample()
+    {
+        // 基本的な整数の乱数生成
+        int randomInt = SNRRandomCenter.Next(1, 100);
+        Logger.Info($"1-99の乱数: {randomInt}");
+
+        // 浮動小数点数の乱数生成
+        float randomFloat = SNRRandomCenter.Range(0.0f, 10.0f);
+        Logger.Info($"0.0-10.0の乱数: {randomFloat}");
+
+        // 配列からランダム選択
+        string[] options = { "オプション1", "オプション2", "オプション3" };
+        string selectedOption = SNRRandomCenter.ChooseRandom(options);
+        Logger.Info($"選択されたオプション: {selectedOption}");
+
+        // 確率による真偽値生成（30%の確率でtrue）
+        bool result = SNRRandomCenter.RandomBool(0.3f);
+        Logger.Info($"30%確率の結果: {result}");
+    }
+
+    /// <summary>
+    /// パフォーマンステスト用のメソッド
+    /// 従来の方法とSNRRandomCenterの速度を比較します
+    /// </summary>
+    public static void PerformanceTest(int iterations = 10000)
+    {
+        Logger.Info("=== パフォーマンステスト開始 ===");
+
+        // 従来の方法（毎回new Random()）
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < iterations; i++)
+        {
+            var random = new System.Random();
+            int value = random.Next(1, 100);
+        }
+        stopwatch.Stop();
+        long traditionalTime = stopwatch.ElapsedMilliseconds;
+
+        // SNRRandomCenter使用
+        stopwatch.Restart();
+        for (int i = 0; i < iterations; i++)
+        {
+            int value = SNRRandomCenter.Next(1, 100);
+        }
+        stopwatch.Stop();
+        long optimizedTime = stopwatch.ElapsedMilliseconds;
+
+        Logger.Info($"従来の方法: {traditionalTime}ms");
+        Logger.Info($"SNRRandomCenter: {optimizedTime}ms");
+        Logger.Info($"改善倍率: {(float)traditionalTime / optimizedTime:F2}x");
+    }
+}
