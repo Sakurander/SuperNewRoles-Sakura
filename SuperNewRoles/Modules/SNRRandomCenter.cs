@@ -408,6 +408,44 @@ public static class SNRRandomCenter
         return items[items.Length - 1];
     }
 
+    /// <summary>
+    /// 一様分布のランダムな回転（高精度）
+    /// ジンバルロックの問題を回避します
+    /// </summary>
+    public static Quaternion RotationUniform
+    {
+        get
+        {
+            // Marsaglia's method for uniform distribution on S3
+            float u1 = Value;
+            float u2 = Value * 2f * Mathf.PI;
+            float u3 = Value * 2f * Mathf.PI;
+
+            float a = Mathf.Sqrt(1f - u1);
+            float b = Mathf.Sqrt(u1);
+
+            return new Quaternion(
+                a * Mathf.Sin(u2),
+                a * Mathf.Cos(u2),
+                b * Mathf.Sin(u3),
+                b * Mathf.Cos(u3)
+            );
+        }
+    }
+
+    /// <summary>
+    /// Fisher-Yatesアルゴリズムによる配列のインプレースシャッフル
+    /// </summary>
+    public static void ShuffleArray<T>(T[] array)
+    {
+        for (int i = array.Length - 1; i > 0; i--)
+        {
+            int j = Range(0, i + 1);
+            T temp = array[i];
+            array[i] = array[j];
+            array[j] = temp;
+        }
+    }
     #endregion
 
     #region デバッグ・統計情報
