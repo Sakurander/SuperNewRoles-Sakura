@@ -40,12 +40,6 @@ public static class SNRRandomCenter
     /// </summary>
     private const int REFILL_THRESHOLD = 100;
 
-    /// <summary>
-    /// 初期化済みかどうかのフラグ
-    /// 二重初期化を防ぐために使用します
-    /// </summary>
-    private static bool s_isInitialized = false;
-
     #endregion
 
     #region 初期化処理
@@ -57,8 +51,7 @@ public static class SNRRandomCenter
     static SNRRandomCenter()
     {
         // 初期化処理をInitStateに集約
-        InitState(Environment.TickCount, false); // 初回はログを抑制しても良い
-        s_isInitialized = true;
+        InitState(Environment.TickCount, false);
         Logger.Info($"[SNRRandomCenter] 初回初期化完了 - シード: {s_unitySeed}");
     }
 
@@ -236,9 +229,11 @@ public static class SNRRandomCenter
     {
         get
         {
-            float angle = Value * 2f * Mathf.PI;
-            float radius = Mathf.Sqrt(Value);
-            return new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
+            // 2つの独立した乱数を取得
+            float randomAngle = Value * 2f * Mathf.PI;
+            float randomRadius = Mathf.Sqrt(Value); // 平方根を取ることで均一分布になる
+
+            return new Vector2(Mathf.Cos(randomAngle) * randomRadius, Mathf.Sin(randomAngle) * randomRadius);
         }
     }
 
