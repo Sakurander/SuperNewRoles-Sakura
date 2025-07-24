@@ -290,9 +290,7 @@ public static class SNRRandomCenter
         return array[Range(0, array.Length)];
     }
 
-    /// <summary>
-    /// リストからランダムな要素を選択します
-    /// </summary>
+    /// <summary> リストからランダムな要素を選択します </summary>
     /// <typeparam name="T">リストの要素型</typeparam>
     /// <param name="list">選択元のリスト</param>
     /// <returns>リストからランダムに選択された要素</returns>
@@ -375,9 +373,7 @@ public static class SNRRandomCenter
         }
     }
 
-    /// <summary>
-    /// Fisher-Yatesアルゴリズムによる配列のインプレースシャッフル
-    /// </summary>
+    /// <summary> Fisher-Yatesアルゴリズムによる配列のインプレースシャッフル </summary>
     public static void ShuffleArray<T>(T[] array)
     {
         for (int i = array.Length - 1; i > 0; i--)
