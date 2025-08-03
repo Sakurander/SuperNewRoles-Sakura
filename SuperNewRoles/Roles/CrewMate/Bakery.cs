@@ -38,6 +38,7 @@ public class BakeryAbility : AbilityBase
     {
         get
         {
+             // TODO:BakeryExileTextもBakeryExileText2も同じ。乱数を外しても良い？
             return SNRRandomCenter.Next(1, 10) == 1 ? ModTranslation.GetString("BakeryExileText2") : ModTranslation.GetString("BakeryExileText");
         }
     }
