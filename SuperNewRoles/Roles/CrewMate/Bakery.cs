@@ -38,8 +38,7 @@ public class BakeryAbility : AbilityBase
     {
         get
         {
-            var rand = new System.Random();
-            return rand.Next(1, 10) == 1 ? ModTranslation.GetString("BakeryExileText2") : ModTranslation.GetString("BakeryExileText");
+            return SNRRandomCenter.Next(1, 10) == 1 ? ModTranslation.GetString("BakeryExileText2") : ModTranslation.GetString("BakeryExileText");
         }
     }
     public override void AttachToAlls()
