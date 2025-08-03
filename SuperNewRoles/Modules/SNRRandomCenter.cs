@@ -2,6 +2,9 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Hazel;
+using HarmonyLib;
+using System.Security.Cryptography;
 
 namespace SuperNewRoles.Modules;
 
@@ -74,6 +77,50 @@ public static class SNRRandomCenter
         RefillRandomPool();
 
         if (log) Logger.Info($"[SNRRandomCenter] 乱数システムを再初期化 - シード: {seed}");
+    }
+    /// <summary>
+    /// [RPC] 他のクライアントに対し、乱数シードを同期させるためのメソッド。
+    /// このメソッドはRPC経由でクライアント側でのみ実行されます。
+    /// </summary>
+    /// <param name="seed">ホストが生成したシード値</param>
+    [CustomRPC(onlyOtherPlayer: true)]
+    public static void RpcSyncRandomSeed(int seed)
+    { // このメソッドがRPCで呼び出されたクライアントは、受け取ったシードで初期化を行う
+        InitState(seed, true);
+    }
+
+    /// <summary> 暗号学的に強力な乱数ジェネレータを使用して、安全なシード値を生成します。</summary>
+    /// <returns>ランダムな整数シード</returns>
+    private static int GenerateSecureSeed()
+    {
+        using var rng = RandomNumberGenerator.Create();
+        byte[] randomBytes = new byte[4];
+        rng.GetBytes(randomBytes);
+        return BitConverter.ToInt32(randomBytes, 0);
+    }
+
+    [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.CoStartGame))]
+    public static class GameStartManagerPatch
+    {
+        public static void Prefix()
+        {
+            Logger.Info("[GameStart] ゲーム開始時に乱数シードを同期します");
+            // この処理はホスト（ゲームの主催者）のみが実行します
+            if (!AmongUsClient.Instance.AmHost) return;
+
+            // 1. 暗号学的に安全なシードを生成します
+            int seed = GenerateSecureSeed();
+
+            // 2. ホスト自身の乱数システムを、生成したシードで即座に初期化します
+            // (RpcSyncRandomSeedは onlyOtherPlayer:true のため、ホストは自分で初期化が必要です)
+            InitState(seed, true);
+
+            // 3. 他の全クライアントにRPCを送信します
+            // CustomRPCManagerがパッチを当てているため、メソッドを直接呼び出すだけでRPCが送信されます
+            RpcSyncRandomSeed(seed);
+
+            Logger.Info($"[GameStart] Host generated and synced a new random seed: {seed}");
+        }
     }
 
     /// <summary>
