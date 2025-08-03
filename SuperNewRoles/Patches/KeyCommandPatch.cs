@@ -22,6 +22,16 @@ class ControllerManagerUpdatePatch
 
     public static void Postfix()
     {
+        if (Input.GetKeyDown(KeyCode.F5))
+        {
+            var next = SNRRandomCenter.Next();
+            Logger.Info($"SNRRandomCenter.Next() = {next}", "Key Command");
+        }
+        if (Input.GetKeyDown(KeyCode.F6))
+        {
+            SNRRandomCenter.LogPoolStatus();
+            SNRRandomCenterUsageExample.RunComprehensiveBenchmark();
+        }
         //解像度変更
         if (Input.GetKeyDown(KeyCode.F9))
         {
