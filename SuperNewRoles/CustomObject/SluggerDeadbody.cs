@@ -49,7 +49,7 @@ public class SluggerDeadbody : MonoBehaviour
     public Sprite[] GetSprites()
     {
         // 0,1,2: 8枚アニメ、3,4: 1枚絵
-        int type = UnityEngine.Random.Range(0, 5);
+        int type = SNRRandomCenter.Range(0, 5);
         SpriteType = type;
         if (type <= 2)
         {

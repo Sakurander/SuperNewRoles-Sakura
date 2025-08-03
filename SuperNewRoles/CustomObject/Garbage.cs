@@ -53,7 +53,7 @@ public class Garbage
         GarbageObject.SetActive(AllPlayerCanSeeGarbage || ExPlayerControl.LocalPlayer.Role == RoleId.WellBehaver);
 
         GarbageRenderer = GarbageObject.GetComponent<SpriteRenderer>();
-        GarbageRenderer.sprite = GarbageSprites[UnityEngine.Random.Range(0, GarbageSprites.Length)];
+        GarbageRenderer.sprite = GarbageSprites[SNRRandomCenter.Range(0, GarbageSprites.Length)];
 
         CircleCollider = GarbageObject.GetComponent<CircleCollider2D>();
 

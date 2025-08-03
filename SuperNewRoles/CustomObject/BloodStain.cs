@@ -37,7 +37,7 @@ public class BloodStain
         BloodStainObject.transform.position = position;
         BloodStainObject.transform.localPosition = position;
         BloodStainObject.transform.localScale *= 1.5f;
-        BloodStainObject.transform.Rotate(0f, 0f, UnityEngine.Random.Range(0f, 360f));
+        BloodStainObject.transform.Rotate(0f, 0f, SNRRandomCenter.Range(0f, 360f));
         BloodStainObject.transform.SetParent(parent ?? player.transform.parent);
 
         spriteRenderer = BloodStainObject.AddComponent<SpriteRenderer>();
@@ -59,7 +59,7 @@ public class BloodStain
         BloodStainObject.transform.position = position;
         BloodStainObject.transform.localPosition = position;
         BloodStainObject.transform.localScale *= 1.5f;
-        BloodStainObject.transform.Rotate(0f, 0f, Random.Range(0f, 360f));
+        BloodStainObject.transform.Rotate(0f, 0f, SNRRandomCenter.Range(0f, 360f));
         spriteRenderer = BloodStainObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = getBloodStainSprite();
         spriteRenderer.color = color;

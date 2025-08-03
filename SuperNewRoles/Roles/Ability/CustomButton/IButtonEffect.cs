@@ -70,7 +70,7 @@ internal interface IButtonEffect
         //以下はFillup。もし別のeffectにしたくなったらoverrideして自分でなんとかする。
         if (isEffectActive && actionButton.isCoolingDown && EffectTimer < effectStartTime && doAdditionalEffect)
         {
-            actionButton.graphic.transform.localPosition = actionButton.position + (Vector3)UnityEngine.Random.insideUnitCircle * 0.05f;
+            actionButton.graphic.transform.localPosition = actionButton.position + (Vector3)Modules.SNRRandomCenter.InsideUnitCircle * 0.05f;
         }
         else
         {

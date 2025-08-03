@@ -78,7 +78,7 @@ public class RevengeExileAbility : AbilityBase
         // リストが空でない場合、ランダムなプレイヤーを選択
         if (alivePlayers.Count > 0)
         {
-            ExPlayerControl randomPlayer = alivePlayers[UnityEngine.Random.Range(0, alivePlayers.Count)];
+            ExPlayerControl randomPlayer = alivePlayers[SNRRandomCenter.Range(0, alivePlayers.Count)];
             randomPlayer.RpcCustomDeath(CustomDeathType.Exile);
         }
     }

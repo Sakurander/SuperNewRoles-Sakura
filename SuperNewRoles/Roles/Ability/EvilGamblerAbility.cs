@@ -45,7 +45,7 @@ public class EvilGamblerAbility : AbilityBase
         if (Player.PlayerId == data.killer.PlayerId)
         {
             // キルが発生した時に確率判定を行い、キルクールを設定
-            bool isSuccess = UnityEngine.Random.Range(0, 100) < _data.successChance;
+            bool isSuccess = SNRRandomCenter.Range(0, 100) < _data.successChance;
             float killTime = isSuccess ? _data.successKillCooldown : _data.failureKillCooldown;
 
             new LateTask(() =>

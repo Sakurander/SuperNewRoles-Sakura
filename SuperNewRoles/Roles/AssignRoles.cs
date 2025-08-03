@@ -234,13 +234,13 @@ public static class AssignRoles
         // 100%チケットの割り当て処理
         while (tickets_hundred.Count > 0 && targetPlayers.Count > 0 && maxBeans > 0)
         {
-            int ticketIndex = UnityEngine.Random.Range(0, tickets_hundred.Count);
+            int ticketIndex = SNRRandomCenter.Range(0, tickets_hundred.Count);
             AssignTickets selectedTicket = tickets_hundred[ticketIndex];
             selectedTicket.IncrementRemainingAssignBeans();
             if (selectedTicket.RemainingAssignBeans <= 0)
                 tickets_hundred.RemoveAt(ticketIndex);
 
-            int playerIndex = UnityEngine.Random.Range(0, targetPlayers.Count);
+            int playerIndex = SNRRandomCenter.Range(0, targetPlayers.Count);
             PlayerControl targetPlayer = targetPlayers[playerIndex];
             targetPlayers.RemoveAt(playerIndex);
 
@@ -261,7 +261,7 @@ public static class AssignRoles
             if (tickets_not_hundred.Count == 0)
                 break;
 
-            int ticketIndex = UnityEngine.Random.Range(0, tickets_not_hundred.Count);
+            int ticketIndex = SNRRandomCenter.Range(0, tickets_not_hundred.Count);
             AssignTickets selectedTicket = tickets_not_hundred[ticketIndex];
             selectedTicket.IncrementRemainingAssignBeans();
             if (selectedTicket.RemainingAssignBeans <= 0)

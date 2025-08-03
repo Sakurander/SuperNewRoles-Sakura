@@ -110,7 +110,7 @@ public static class RoleDetailMenu
         if (false)//roleOption == null)
         {
             // random 1~2
-            int num = Random.Range(1, 3);
+            int num = SNRRandomCenter.Range(1, 3);
             if (scroller != null)
                 scroller.ContentYBounds.max = 0.2f;
             return ModTranslation.GetString($"HelpMenu.NoneOptions{num}");

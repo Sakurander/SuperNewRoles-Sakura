@@ -649,7 +649,7 @@ class BalancerAbility : AbilityBase, IAbilityCount
 
         for (int i = 0; i < CHAIN_OBJECT_COUNT; i++)
         {
-            ChainObjects.Add((CreateChainRenderer(UnityEngine.Random.Range(1.8f, -1.7f), UnityEngine.Random.Range(-15f, 15f)), 0f, 0));
+            ChainObjects.Add((CreateChainRenderer(SNRRandomCenter.Range(1.8f, -1.7f), SNRRandomCenter.Range(-15f, 15f)), 0f, 0));
         }
         ChainObjects.Add((CreateChainRenderer(0, 0, -12f), 0f, 0));
     }
@@ -837,7 +837,7 @@ class BalancerAbility : AbilityBase, IAbilityCount
         MeetingHud.Instance.TitleText.GetComponent<TextTranslatorTMP>().enabled = false;
         MeetingHud.Instance.TitleText.transform.localPosition = new(0, 2, -1);
         MeetingHud.Instance.TitleText.transform.localScale = Vector3.one * 2f;
-        MeetingHud.Instance.TitleText.text = ModTranslation.GetString(TitleTexts[UnityEngine.Random.Range(0, TitleTexts.Length)]);
+        MeetingHud.Instance.TitleText.text = ModTranslation.GetString(TitleTexts[SNRRandomCenter.Range(0, TitleTexts.Length)]);
 
         // プレイヤー投票エリアの配置
         leftPlayerArea.transform.localPosition = new(LEFT_PLAYER_POS_X, PLAYER_POS_Y, PLAYER_POS_Z);
@@ -862,7 +862,7 @@ class BalancerAbility : AbilityBase, IAbilityCount
             {
                 if (!area.AmDead && !targetIds.Contains(area.VotedFor))
                 {
-                    area.VotedFor = targetIds[UnityEngine.Random.Range(0, targetIds.Count)];
+                    area.VotedFor = targetIds[SNRRandomCenter.Range(0, targetIds.Count)];
                 }
             }
         }

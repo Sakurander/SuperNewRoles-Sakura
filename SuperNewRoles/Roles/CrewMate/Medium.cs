@@ -156,7 +156,7 @@ public class MediumSpiritTalkAbility : TargetCustomButtonBase, IAbilityCount
         this.UseAbilityCount();
 
         // ランダムで情報を選択（1-4）
-        int infoType = UnityEngine.Random.Range(1, 5);
+        int infoType = SNRRandomCenter.Range(1, 5);
         string message = "";
 
         // 追放で死亡した場合は特別メッセージ

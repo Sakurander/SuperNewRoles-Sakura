@@ -93,7 +93,7 @@ public class RobberAbility : AbilityBase
         var taskList = completedTasks.ToList();
         for (int i = taskList.Count - 1; i > 0; i--)
         {
-            int j = UnityEngine.Random.Range(0, i + 1);
+            int j = SNRRandomCenter.Range(0, i + 1);
             var temp = taskList[i];
             taskList[i] = taskList[j];
             taskList[j] = temp;

@@ -17,7 +17,7 @@ public class CustomHauntToAbility : AbilityBase
     {
         _target = target;
 
-        Offset = UnityEngine.Random.insideUnitCircle;
+        Offset = SNRRandomCenter.InsideUnitCircle;
         if (Offset.magnitude < 0.2f)
         {
             Offset = Offset.normalized * 0.2f;

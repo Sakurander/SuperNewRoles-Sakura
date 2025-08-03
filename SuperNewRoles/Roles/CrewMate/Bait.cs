@@ -106,7 +106,7 @@ class BaitAbility : AbilityBase
         {
             int minDelay = Math.Max(0, (int)Bait.BaitReportTime - Bait.BaitDelayVariation);
             int maxDelay = (int)Bait.BaitReportTime + Bait.BaitDelayVariation;
-            delay = UnityEngine.Random.Range(minDelay, maxDelay + 1);
+            delay = SNRRandomCenter.Range(minDelay, maxDelay + 1);
 
             if (delay > 0)
                 yield return new WaitForSeconds(delay);
