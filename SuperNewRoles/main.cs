@@ -127,8 +127,6 @@ public partial class SuperNewRolesPlugin : BasePlugin
             }
         });
 
-        SNRRandomCenter.InitState(123456);
-
         Logger.LogInfo("Waiting for Harmony patch");
         if (ModHelpers.IsAndroid())
         {
