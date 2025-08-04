@@ -78,7 +78,7 @@ public class SantaAbility : AbilityBase
     }
     private RoleId SelectRole()
     {
-        return _selectedRole = _tickets[SNRRandomCenter.Range(0, _tickets.Count)];
+        return _selectedRole = SNRRandomCenter.ChooseRandom(_tickets);
     }
     [CustomRPC]
     public void RpcSantaAssigndRole(ExPlayerControl source, ExPlayerControl target, bool successed)

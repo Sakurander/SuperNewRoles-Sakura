@@ -176,7 +176,7 @@ public abstract class WaveCannonObjectBase
     private static float GetRandomAngle()
     {
         var angles = new List<float> { 135, 90, 270, 225 };
-        return angles[SNRRandomCenter.Range(0, angles.Count)];
+        return SNRRandomCenter.ChooseRandom(angles);
     }
     [CustomRPC]
     public static void RpcWaveCannonWiseMan(WaveCannonAbility ability, ExPlayerControl wiseMan, float angle)

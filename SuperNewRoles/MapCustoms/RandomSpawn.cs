@@ -60,7 +60,7 @@ public static class RandomSpawn
     public static IEnumerator SpawnPlayerAtRandomLocationCoroutine(PlayerControl player, Vector2[] spawnPositions)
     {
         yield return Effects.Wait(0.1f); // Reduced wait time slightly, adjust if necessary
-        Vector2 position = spawnPositions[SNRRandomCenter.Range(0, spawnPositions.Length)];
+        Vector2 position =  SNRRandomCenter.ChooseRandom(spawnPositions);
         player.NetTransform.RpcSnapTo(position);
     }
 

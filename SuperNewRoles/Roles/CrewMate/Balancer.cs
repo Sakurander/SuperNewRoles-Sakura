@@ -837,7 +837,7 @@ class BalancerAbility : AbilityBase, IAbilityCount
         MeetingHud.Instance.TitleText.GetComponent<TextTranslatorTMP>().enabled = false;
         MeetingHud.Instance.TitleText.transform.localPosition = new(0, 2, -1);
         MeetingHud.Instance.TitleText.transform.localScale = Vector3.one * 2f;
-        MeetingHud.Instance.TitleText.text = ModTranslation.GetString(TitleTexts[SNRRandomCenter.Range(0, TitleTexts.Length)]);
+        MeetingHud.Instance.TitleText.text = ModTranslation.GetString(SNRRandomCenter.ChooseRandom(TitleTexts));
 
         // プレイヤー投票エリアの配置
         leftPlayerArea.transform.localPosition = new(LEFT_PLAYER_POS_X, PLAYER_POS_Y, PLAYER_POS_Z);
@@ -862,7 +862,7 @@ class BalancerAbility : AbilityBase, IAbilityCount
             {
                 if (!area.AmDead && !targetIds.Contains(area.VotedFor))
                 {
-                    area.VotedFor = targetIds[SNRRandomCenter.Range(0, targetIds.Count)];
+                    area.VotedFor = SNRRandomCenter.ChooseRandom(targetIds);
                 }
             }
         }
