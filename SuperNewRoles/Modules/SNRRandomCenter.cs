@@ -530,57 +530,96 @@ public static class SNRRandomCenter
             throw new ArgumentException("items と weights の長さが一致しません");
         }
 
-        float totalWeight = 0f;
-        for (int i = 0; i < weights.Length; i++) totalWeight += weights[i];
-
-        float randomValue = Value * totalWeight;
-        float currentWeight = 0f;
-
-        for (int i = 0; i < items.Length; i++)
+        lock (s_threadLock) // 複合的な処理なのでロックを追加
         {
-            currentWeight += weights[i];
-            if (randomValue <= currentWeight) return items[i];
-        }
+            float totalWeight = 0f;
+            foreach (var weight in weights)
+            {
+                if (weight > 0) // 正の重みのみを合計する
+                {
+                    totalWeight += weight;
+                }
+            }
 
-        return items[items.Length - 1];
+            // 有効な重みが全くない場合は、例外を投げるか、等確率で選択する
+            if (totalWeight <= 0f)
+            {
+                Logger.Warning("All weights are zero or negative in WeightedRandom. Falling back to uniform random choice.");
+                // 安全なフォールバックとして、重みを無視してランダムに選択する
+                return items[Range(0, items.Length)];
+            }
+
+            float randomValue = Value * totalWeight;
+            float currentWeight = 0f;
+
+            for (int i = 0; i < items.Length; i++)
+            {
+                if (weights[i] > 0) // 正の重みのみを考慮
+                {
+                    currentWeight += weights[i];
+                    if (randomValue <= currentWeight) return items[i];
+                }
+            }
+            // 浮動小数点の誤差によりループを抜けることがあるため、最後の有効な要素を返す
+            for (int i = items.Length - 1; i >= 0; i--)
+            {
+                if (weights[i] > 0) return items[i];
+            }
+            // ここには到達しないはず
+            throw new InvalidOperationException("WeightedRandom failed unexpectedly.");
+        }
     }
 
     /// <summary>
     /// 一様分布のランダムな回転（高精度）
-    /// ジンバルロックの問題を回避します
+    /// ジンバルロックの問題を回避します。
+    /// この処理はアトミック（不可分）であり、スレッドセーフです。
     /// </summary>
     public static Quaternion RotationUniform
     {
         get
         {
-            // Marsaglia's method for uniform distribution on S3
-            float u1 = Value;
-            float u2 = Value * 2f * Mathf.PI;
-            float u3 = Value * 2f * Mathf.PI;
+            // 複数の乱数を用いて計算するため、処理全体をロックして原子性を保証します。
+            lock (s_threadLock)
+            {
+                // Marsaglia's method for uniform distribution on S3
+                float u1 = Value;
+                float u2 = Value * 2f * Mathf.PI;
+                float u3 = Value * 2f * Mathf.PI;
 
-            float a = Mathf.Sqrt(1f - u1);
-            float b = Mathf.Sqrt(u1);
+                float a = Mathf.Sqrt(1f - u1);
+                float b = Mathf.Sqrt(u1);
 
-            return new Quaternion(
-                a * Mathf.Sin(u2),
-                a * Mathf.Cos(u2),
-                b * Mathf.Sin(u3),
-                b * Mathf.Cos(u3)
-            );
+                return new Quaternion(
+                    a * Mathf.Sin(u2),
+                    a * Mathf.Cos(u2),
+                    b * Mathf.Sin(u3),
+                    b * Mathf.Cos(u3)
+                );
+            }
         }
     }
 
-    /// <summary> Fisher-Yatesアルゴリズムによる配列のインプレースシャッフル </summary>
+    /// <summary>
+    /// Fisher-Yatesアルゴリズムによる配列のインプレースシャッフル。
+    /// このメソッドはスレッドセーフです。
+    /// </summary>
     public static void ShuffleArray<T>(T[] array)
     {
-        for (int i = array.Length - 1; i > 0; i--)
+        // 配列を直接変更する処理のため、メソッド全体をロックして
+        // 複数スレッドによる同一配列への同時アクセスを防ぎます。
+        lock (s_threadLock)
         {
-            int j = Range(0, i + 1);
-            T temp = array[i];
-            array[i] = array[j];
-            array[j] = temp;
+            for (int i = array.Length - 1; i > 0; i--)
+            {
+                int j = Range(0, i + 1);
+                T temp = array[i];
+                array[i] = array[j];
+                array[j] = temp;
+            }
         }
     }
+
     #endregion
 
     #region デバッグ・統計情報
