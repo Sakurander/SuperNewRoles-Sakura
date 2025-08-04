@@ -12,7 +12,7 @@ namespace SuperNewRoles.Modules;
 
 /// <summary>
 /// 乱数シードの一元管理によりGC・初期化コスト削減を実現するクラス
-/// SNRで使用される現行の乱数生成器と区別するためSNRRandomCenterという名前にしています
+/// SNRで使用される現行の乱数生成器(UnityEngineなど)と区別するためSNRRandomCenterという名前にしています
 /// </summary>
 public static class SNRRandomCenter
 {
@@ -51,6 +51,11 @@ public static class SNRRandomCenter
     /// </summary>
     public static bool IsSeedSynced { get; private set; } = false;
 
+    /// <summary>
+    /// スレッドセーフティを確保するためのロックオブジェクト。
+    /// </summary>
+    private static readonly object s_threadLock = new();
+
     #endregion
 
     #region 初期化処理
@@ -74,24 +79,26 @@ public static class SNRRandomCenter
     /// <param name="log">ログを出力するかどうか</param>
     public static void InitState(int seed, bool log = true)
     {
-        // Unity側のシードを設定
-        UnityEngine.Random.InitState(seed);
-        s_unitySeed = seed;
+        lock (s_threadLock) // 共有リソースへのアクセス全体をロック
+        {        // Unity側のシードを設定
+            UnityEngine.Random.InitState(seed);
+            s_unitySeed = seed;
 
-        // System.Randomも同じシードで再生成する
-        s_mainRandom = new System.Random(seed);
+            // System.Randomも同じシードで再生成する
+            s_mainRandom = new System.Random(seed);
 
-        // プールも新しい乱数生成器で補充
-        RefillRandomPool();
+            // プールも新しい乱数生成器で補充
+            RefillRandomPool_UNLOCKED(); // ロック内で呼び出すため、内部メソッドを呼ぶ
 
-        if (log) Logger.Info($"[SNRRandomCenter] 乱数システムを再初期化 - シード: {seed}");
+            if (log) Logger.Info($"[SNRRandomCenter] 乱数システムを再初期化 - シード: {seed}");
+        }
     }
 
     /// <summary>
-    /// 乱数プールの補充
-    /// 常にs_mainRandomから補充するように変更
+    /// 乱数プールの補充(アンロック版)
+    /// 常にs_mainRandomから補充します
     /// </summary>
-    private static void RefillRandomPool()
+    private static void RefillRandomPool_UNLOCKED()
     {
         s_randomPool.Clear();
 
@@ -214,7 +221,13 @@ public static class SNRRandomCenter
     /// System.Random.Next()と同等の機能です
     /// </summary>
     /// <returns>0以上の整数値</returns>
-    public static int Next() => s_mainRandom.Next();
+    public static int Next()
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            return s_mainRandom.Next();
+        }
+    }
 
     /// <summary>
     /// 指定した範囲内の整数の乱数を生成します
@@ -222,7 +235,13 @@ public static class SNRRandomCenter
     /// </summary>
     /// <param name="maxValue">生成される乱数の排他的上限値</param>
     /// <returns>0以上maxValue未満の整数値</returns>
-    public static int Next(int maxValue) => s_mainRandom.Next(maxValue);
+    public static int Next(int maxValue)
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            return s_mainRandom.Next(maxValue);
+        }
+    }
 
     /// <summary>
     /// 指定した範囲内の整数の乱数を生成します
@@ -231,21 +250,39 @@ public static class SNRRandomCenter
     /// <param name="minValue">生成される乱数の包含的下限値</param>
     /// <param name="maxValue">生成される乱数の排他的上限値</param>
     /// <returns>minValue以上maxValue未満の整数値</returns>
-    public static int Next(int minValue, int maxValue) => s_mainRandom.Next(minValue, maxValue);
+    public static int Next(int minValue, int maxValue)
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            return s_mainRandom.Next(minValue, maxValue);
+        }
+    }
 
     /// <summary>
     /// 0.0以上1.0未満の浮動小数点数の乱数を生成します
     /// System.Random.NextDouble()と同等の機能です
     /// </summary>
     /// <returns>0.0以上1.0未満の浮動小数点数</returns>
-    public static double NextDouble() => s_mainRandom.NextDouble();
+    public static double NextDouble()
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            return s_mainRandom.NextDouble();
+        }
+    }
 
     /// <summary>
     /// 指定したバイト配列をランダムな値で埋めます
     /// System.Random.NextBytes(byte[] buffer)と同等の機能です
     /// </summary>
     /// <param name="buffer">ランダムな値で埋めるバイト配列</param>
-    public static void NextBytes(byte[] buffer) => s_mainRandom.NextBytes(buffer);
+    public static void NextBytes(byte[] buffer)
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            s_mainRandom.NextBytes(buffer);
+        }
+    }
 
     #endregion
 
@@ -259,10 +296,14 @@ public static class SNRRandomCenter
     {
         get
         {
-            // プールの残量チェックと自動補充
-            if (s_randomPool.Count <= REFILL_THRESHOLD) RefillRandomPool();
-
-            return s_randomPool.Dequeue();
+            lock (s_threadLock) // lockで保護
+            {
+                if (s_randomPool.Count <= REFILL_THRESHOLD)
+                {
+                    RefillRandomPool_UNLOCKED();
+                }
+                return s_randomPool.Dequeue();
+            }
         }
     }
 
@@ -273,7 +314,13 @@ public static class SNRRandomCenter
     /// <param name="min">最小値（包含）</param>
     /// <param name="max">最大値（排他）</param>
     /// <returns>min以上max未満の整数値</returns>
-    public static int Range(int min, int max) => s_mainRandom.Next(min, max);
+    public static int Range(int min, int max)
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            return s_mainRandom.Next(min, max);
+        }
+    }
 
     /// <summary>
     /// UnityEngine.Random.Rangeと同等の機能（float版）
@@ -282,84 +329,112 @@ public static class SNRRandomCenter
     /// <param name="min">最小値（包含）</param>
     /// <param name="max">最大値（包含）</param>
     /// <returns>min以上max以下の浮動小数点数</returns>
-    public static float Range(float min, float max) => min + (Value * (max - min));
+    public static float Range(float min, float max)
+    {
+        lock (s_threadLock) // lockで保護
+        {
+            return min + (Value * (max - min));
+        }
+    }
 
     /// <summary>
-    /// UnityEngine.Random.insideUnitCircleと同等の機能
-    /// 単位円内のランダムな点を生成します
+    /// UnityEngine.Random.insideUnitCircleと同等の機能(Iが大文字なことに注意)
+    /// 単位円内のランダムな点を生成します。
+    /// この処理はアトミック（不可分）であり、スレッドセーフです。
     /// </summary>
     public static Vector2 InsideUnitCircle
     {
         get
         {
-            // 2つの独立した乱数を取得
-            float randomAngle = Value * 2f * Mathf.PI;
-            float randomRadius = Mathf.Sqrt(Value); // 平方根を取ることで均一分布になる
+            // このプロパティが返すVector2は、2つの連続した乱数から生成される必要があります。
+            // スレッドの割り込みを防ぎ、処理の原子性（アトミック性）と再現性を保証するため、
+            // getアクセサ全体をロックします。
+            lock (s_threadLock)
+            {
+                // 2つの独立した乱数を取得
+                float randomAngle = Value * 2f * Mathf.PI;
+                float randomRadius = Mathf.Sqrt(Value); // 平方根を取ることで均一分布になる
 
-            return new Vector2(Mathf.Cos(randomAngle) * randomRadius, Mathf.Sin(randomAngle) * randomRadius);
+                return new Vector2(Mathf.Cos(randomAngle) * randomRadius, Mathf.Sin(randomAngle) * randomRadius);
+            }
         }
     }
 
     /// <summary>
-    /// UnityEngine.Random.insideUnitSphereと同等の機能
-    /// 単位球内のランダムな点を生成します
+    /// UnityEngine.Random.insideUnitSphereと同等の機能(Iが大文字なことに注意)
+    /// 単位球内のランダムな点を生成します。
+    /// この処理はアトミック（不可分）であり、スレッドセーフです。
     /// </summary>
     public static Vector3 InsideUnitSphere
     {
         get
         {
-            float phi = Value * 2f * Mathf.PI;
-            float cosTheta = 1f - 2f * Value;
-            float sinTheta = Mathf.Sqrt(1f - cosTheta * cosTheta);
-            float r = Mathf.Pow(Value, 1f / 3f);
+            // 複数の乱数を用いて計算するため、処理全体をロックして原子性を保証します。
+            lock (s_threadLock)
+            {
+                float phi = Value * 2f * Mathf.PI;
+                float cosTheta = 1f - 2f * Value;
+                float sinTheta = Mathf.Sqrt(1f - cosTheta * cosTheta);
+                float r = Mathf.Pow(Value, 1f / 3f);
 
-            return new Vector3(
-                r * sinTheta * Mathf.Cos(phi),
-                r * sinTheta * Mathf.Sin(phi),
-                r * cosTheta
-            );
+                return new Vector3(
+                    r * sinTheta * Mathf.Cos(phi),
+                    r * sinTheta * Mathf.Sin(phi),
+                    r * cosTheta
+                );
+            }
         }
     }
-
     /// <summary>
-    /// UnityEngine.Random.onUnitSphereと同等の機能
-    /// 単位球面上のランダムな点を生成します
+    /// UnityEngine.Random.onUnitSphereと同等の機能(Oが大文字なことに注意)
+    /// 単位球面上のランダムな点を生成します。
+    /// この処理はアトミック（不可分）であり、スレッドセーフです。
     /// </summary>
     public static Vector3 OnUnitSphere
     {
         get
         {
-            float phi = Value * 2f * Mathf.PI;
-            float cosTheta = 1f - 2f * Value;
-            float sinTheta = Mathf.Sqrt(1f - cosTheta * cosTheta);
+            // 複数の乱数を用いて計算するため、処理全体をロックして原子性を保証します。
+            lock (s_threadLock)
+            {
+                float phi = Value * 2f * Mathf.PI;
+                float cosTheta = 1f - 2f * Value;
+                float sinTheta = Mathf.Sqrt(1f - cosTheta * cosTheta);
 
-            return new Vector3(
-                sinTheta * Mathf.Cos(phi),
-                sinTheta * Mathf.Sin(phi),
-                cosTheta
-            );
+                return new Vector3(
+                    sinTheta * Mathf.Cos(phi),
+                    sinTheta * Mathf.Sin(phi),
+                    cosTheta
+                );
+            }
         }
     }
 
     /// <summary>
-    /// UnityEngine.Random.rotationと同等の機能
-    /// ランダムな回転を生成します
+    /// UnityEngine.Random.rotationと同等の機能(Rが大文字なことに注意)
+    /// ランダムな回転を生成します。
+    /// この処理はアトミック（不可分）であり、スレッドセーフです。
     /// </summary>
     public static Quaternion Rotation
     {
         get
         {
-            return Quaternion.Euler(
-                Range(0f, 360f),
-                Range(0f, 360f),
-                Range(0f, 360f)
-            );
+            // 3つの独立した乱数からQuaternionを生成するため、処理全体をロックします。
+            lock (s_threadLock)
+            {
+                return Quaternion.Euler(
+                    Range(0f, 360f),
+                    Range(0f, 360f),
+                    Range(0f, 360f)
+                );
+            }
         }
     }
 
     /// <summary>
     /// UnityEngine.Random.ColorHSVと同等の機能
-    /// HSV色空間でランダムな色を生成します
+    /// HSV色空間でランダムな色を生成します。
+    /// このメソッドはスレッドセーフです。
     /// </summary>
     /// <param name="hueMin">色相の最小値</param>
     /// <param name="hueMax">色相の最大値</param>
@@ -375,14 +450,19 @@ public static class SNRRandomCenter
                                  float valueMin = 0f, float valueMax = 1f,
                                  float alphaMin = 1f, float alphaMax = 1f)
     {
-        float h = Range(hueMin, hueMax);
-        float s = Range(saturationMin, saturationMax);
-        float v = Range(valueMin, valueMax);
-        float a = Range(alphaMin, alphaMax);
+        // 複数の乱数を用いて最終的なColorオブジェクトを生成するため、
+        // メソッド全体をロックして原子性を保証します。
+        lock (s_threadLock)
+        {
+            float h = Range(hueMin, hueMax);
+            float s = Range(saturationMin, saturationMax);
+            float v = Range(valueMin, valueMax);
+            float a = Range(alphaMin, alphaMax);
 
-        Color rgb = Color.HSVToRGB(h, s, v, false);
-        rgb.a = a;
-        return rgb;
+            Color rgb = Color.HSVToRGB(h, s, v, false);
+            rgb.a = a;
+            return rgb;
+        }
     }
 
     #endregion
