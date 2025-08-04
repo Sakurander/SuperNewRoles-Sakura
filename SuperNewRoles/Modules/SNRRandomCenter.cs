@@ -1,9 +1,7 @@
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Hazel;
 using HarmonyLib;
 using System.Security.Cryptography;
 using BepInEx.Unity.IL2CPP.Utils;
@@ -109,7 +107,11 @@ public static class SNRRandomCenter
     #endregion
 
     #region シードの同期処理
-    /// <summary> ホストがゲームを開始する際に呼び出す初期化処理。 </summary>
+
+    /// <summary>
+    /// ホストとして乱数システムを初期化し、全クライアントにシードを送信します。
+    /// このメソッドは、ゲームのホストがゲーム開始時に一度だけ呼び出す必要があります。
+    /// </summary>
     public static void InitializeAsHost()
     {
         int seed = GenerateSecureSeed();
@@ -121,7 +123,10 @@ public static class SNRRandomCenter
         RpcSyncRandomSeed(seed);
     }
 
-    /// <summary> クライアントがゲームに参加する際に呼び出す初期化処理。</summary>
+    /// <summary>
+    /// クライアントとして乱数システムの同期待機を開始します。
+    /// このメソッドは、クライアントがゲームに参加する際に一度だけ呼び出す必要があります。
+    /// </summary>
     public static void InitializeAsClient()
     {
         IsSeedSynced = false;
@@ -130,7 +135,7 @@ public static class SNRRandomCenter
 
     /// <summary>
     /// [RPC] 他のクライアントに対し、乱数シードを同期させるためのメソッド。
-    /// このメソッドはRPC経由でクライアント側でのみ実行されます。
+    /// このメソッドはRPC経由でクライアント側でのみ呼び出されることを意図しています。
     /// </summary>
     /// <param name="seed">ホストが生成したシード値</param>
     [CustomRPC(onlyOtherPlayer: true)]
@@ -142,7 +147,6 @@ public static class SNRRandomCenter
         Logger.Info($"[SNRRandomCenter] Seed successfully synced from host. Seed: {seed}");
     }
 
-
     /// <summary> 暗号学的に強力な乱数ジェネレータを使用して、安全なシード値を生成します。</summary>
     /// <returns>ランダムな整数シード</returns>
     private static int GenerateSecureSeed()
@@ -152,65 +156,6 @@ public static class SNRRandomCenter
         rng.GetBytes(randomBytes);
         return BitConverter.ToInt32(randomBytes, 0);
     }
-
-    [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.CoStartGame))]
-    public static class GameStartManagerPatch
-    {
-        /// <summary>
-        /// クライアント側で実行される同期タイムアウト監視コルーチンの参照を保持します。
-        /// ゲームが連続して開始された場合に、古いコルーチンを確実に停止させるために使用します。
-        /// </summary>
-        private static Coroutine _syncTimeoutCoroutine;
-
-        /// <summary>
-        /// ホストの場合はシードを生成して全クライアントに送信し、
-        /// クライアントの場合はシードの受信待機とタイムアウト処理を開始します。
-        /// </summary>
-        public static void Prefix(AmongUsClient __instance)
-        {
-            if (__instance.AmHost)
-            { // ホストとしてSNRRandomCenterを初期化し、シードを配布
-                InitializeAsHost();
-            }
-            else
-            { // クライアントとしてSNRRandomCenterを初期化し、タイムアウト監視を開始
-                InitializeAsClient();
-
-                // 既に実行中のタイムアウト処理があれば停止する
-                if (_syncTimeoutCoroutine != null)
-                {
-                    __instance.StopCoroutine(_syncTimeoutCoroutine);
-                }
-                _syncTimeoutCoroutine = __instance.StartCoroutine(CheckSyncTimeoutCoroutine());
-            }
-        }
-        /// <summary>
-        /// クライアント側で、ホストからの乱数シード同期を監視するコルーチンです。
-        /// 一定時間内に同期が完了しない場合、エラーを記録しユーザーに通知します。
-        /// </summary>
-        /// <returns>コルーチンのためのIEnumeratorを返します。</returns>
-        private static IEnumerator CheckSyncTimeoutCoroutine()
-        {
-            // 15秒間、同期が完了するのを待つ
-            yield return new WaitForSeconds(15f);
-
-            if (!IsSeedSynced)
-            {
-                Logger.Error("[SNRRandomCenter] CRITICAL: Failed to sync random seed from host within 15 seconds. This may cause desync issues.");
-
-                // 重要：ユーザーに問題を通知する
-                if (HudManager.Instance != null)
-                {
-                    HudManager.Instance.ShowPopUp("サーバーとの同期に失敗しました。\nゲームが正常に動作しない可能性があります。");
-                }
-                // ここでメインメニューに戻すなどの強制的な措置も検討できる
-                // e.g. AmongUsClient.Instance.ExitGame(DisconnectReasons.ExitGame);
-            }
-            // 監視が完了したのでコルーチンの参照をクリアする
-            _syncTimeoutCoroutine = null;
-        }
-    }
-
 
     #endregion
 

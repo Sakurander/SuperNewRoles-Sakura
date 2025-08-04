@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Linq;
 using HarmonyLib;
 using SuperNewRoles.CustomObject;
@@ -6,12 +7,27 @@ using SuperNewRoles.Modules;
 using SuperNewRoles.Modules.Events.Bases;
 using SuperNewRoles.SuperTrophies;
 using SuperNewRoles.MapCustoms;
+using UnityEngine;
+using BepInEx.Unity.IL2CPP.Utils;
 
 namespace SuperNewRoles.Patches;
 
 [HarmonyPatch(typeof(AmongUsClient), nameof(AmongUsClient.CoStartGame))]
 class AmongUsClientStartPatch
 {
+    /// <summary>
+    /// クライアント側で実行される同期タイムアウト監視コルーチンの参照を保持します。
+    /// </summary>
+    private static Coroutine _syncTimeoutCoroutine;
+
+    /// <summary>
+    /// ゲーム開始処理の直前に実行されるPrefixメソッド。
+    /// 主に乱数シードの同期処理を開始するために使用します。
+    /// </summary>
+    public static void Prefix(AmongUsClient __instance)
+    { // 乱数シードの初期化と同期処理を開始
+        InitializeRandomSeed(__instance);
+    }
     public static void Postfix(AmongUsClient __instance)
     {
         try
@@ -52,5 +68,42 @@ class AmongUsClientStartPatch
             Logger.Error($"Error in CoStartGame: {ex.Message}\n{ex.StackTrace}");
             // エラーが発生してもゲームを続行できるようにする
         }
+    }
+
+    /// <summary>
+    /// SNRRandomCenterの初期化とシード同期処理を行います。
+    /// </summary>
+    private static void InitializeRandomSeed(AmongUsClient client)
+    {
+        if (client.AmHost)
+        {
+            SNRRandomCenter.InitializeAsHost();
+        }
+        else
+        {
+            SNRRandomCenter.InitializeAsClient();
+
+            if (_syncTimeoutCoroutine != null)
+            {
+                client.StopCoroutine(_syncTimeoutCoroutine);
+            }
+            _syncTimeoutCoroutine = client.StartCoroutine(CheckSyncTimeoutCoroutine());
+        }
+    }
+
+    /// <summary> クライアント側で、ホストからの乱数シード同期を監視するコルーチンです。</summary>
+    private static IEnumerator CheckSyncTimeoutCoroutine()
+    {
+        yield return new WaitForSeconds(15f);
+
+        if (!SNRRandomCenter.IsSeedSynced)
+        {
+            Logger.Error("[SNRRandomCenter] CRITICAL: Failed to sync random seed from host within 15 seconds.");
+            if (HudManager.Instance != null)
+            {
+                HudManager.Instance.ShowPopUp("サーバーとの同期に失敗しました。\nゲームが正常に動作しない可能性があります。");
+            }
+        }
+        _syncTimeoutCoroutine = null;
     }
 }
