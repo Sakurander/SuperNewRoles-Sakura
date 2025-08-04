@@ -90,15 +90,14 @@ public class RobberAbility : AbilityBase
 
         // 巻き戻すタスク数を制限
         int actualRewindCount = Math.Min(rewindCount, completedTasks.Count);
-        var taskList = completedTasks.ToList();
-        for (int i = taskList.Count - 1; i > 0; i--)
-        {
-            int j = SNRRandomCenter.Range(0, i + 1);
-            var temp = taskList[i];
-            taskList[i] = taskList[j];
-            taskList[j] = temp;
-        }
-        return taskList.Take(actualRewindCount).Select(task => task.Id).ToList();
+        // List<T>を配列に変換
+        var tasksToShuffle = completedTasks.ToArray();
+
+        // SNRRandomCenterのユーティリティで配列をインプレースでシャッフル
+        SNRRandomCenter.ShuffleArray(tasksToShuffle);
+
+        // シャッフルされた配列から必要な数だけIDを取得
+        return tasksToShuffle.Take(actualRewindCount).Select(task => task.Id).ToList();
     }
 
     [CustomRPC]
