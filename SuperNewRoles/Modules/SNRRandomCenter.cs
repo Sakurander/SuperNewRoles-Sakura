@@ -1,10 +1,7 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using HarmonyLib;
 using System.Security.Cryptography;
-using BepInEx.Unity.IL2CPP.Utils;
 
 namespace SuperNewRoles.Modules;
 
@@ -78,7 +75,7 @@ public static class SNRRandomCenter
     public static void InitState(int seed, bool log = true)
     {
         lock (s_threadLock) // 共有リソースへのアクセス全体をロック
-        {        // Unity側のシードを設定
+        { // Unity側のシードを設定
             UnityEngine.Random.InitState(seed);
             s_unitySeed = seed;
 
@@ -458,7 +455,13 @@ public static class SNRRandomCenter
     /// </summary>
     /// <param name="probability">trueが返される確率（0.0～1.0）</param>
     /// <returns>ランダムな真偽値</returns>
-    public static bool RandomBool(float probability = 0.5f) => Value < probability;
+    public static bool RandomBool(float probability = 0.5f)
+    { // Valueプロパティはスレッドセーフだが、このメソッド自体の安全性を明示的に保証するためにロックする。
+        lock (s_threadLock)
+        {
+            return Value < probability;
+        }
+    }
 
     /// <summary>
     /// 重み付きランダム選択
@@ -579,7 +582,13 @@ public static class SNRRandomCenter
     /// 現在のプール状況をログ出力します
     /// デバッグ用の情報取得に使用してください
     /// </summary>
-    public static void LogPoolStatus() => Logger.Info($"[SNRRandomCenter] プール残量: {s_randomPool.Count}/{POOL_SIZE}");
+    public static void LogPoolStatus()
+    {
+        lock (s_threadLock)
+        {
+            Logger.Info($"[SNRRandomCenter] プール残量: {s_randomPool.Count}/{POOL_SIZE}");
+        }
+    }
 
     /// <summary> 乱数生成器の統計情報を取得します </summary>
     /// <returns>統計情報を含む文字列</returns>
@@ -587,11 +596,17 @@ public static class SNRRandomCenter
 
     /// <summary> 現在使用中のシード値を取得します </summary>
     /// <returns>Unity側の現在のシード値</returns>
-    public static int GetCurrentSeed() => s_unitySeed;
+    public static int GetCurrentSeed()
+    {
+        lock (s_threadLock)
+        {
+            return s_unitySeed;
+        }
+    }
 
     #endregion
 }
-
+#region サンプル
 /// <summary>
 /// SNRRandomCenterの使用例とベンチマーク用のサンプルクラス
 /// 実際の使用方法の参考にしてください
@@ -693,3 +708,4 @@ public static class SNRRandomCenterUsageExample
         Logger.Info($"[{testName,-28}] 平均時間: {average:F4} ms");
     }
 }
+#endregion
