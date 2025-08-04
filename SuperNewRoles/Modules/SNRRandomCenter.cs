@@ -468,37 +468,43 @@ public static class SNRRandomCenter
     #endregion
 
     #region 拡張機能
-
     /// <summary>
-    /// 配列からランダムな要素を選択します
-    /// 高頻度で使用される処理のため専用メソッドを用意
+    /// コレクションからランダムな要素を1つ選択します。
+    /// 読み取り専用のコレクションにも対応しています。
     /// </summary>
-    /// <typeparam name="T">配列の要素型</typeparam>
-    /// <param name="array">選択元の配列</param>
-    /// <returns>配列からランダムに選択された要素</returns>
-    public static T ChooseRandom<T>(T[] array)
+    /// <typeparam name="T">コレクションの要素型</typeparam>
+    /// <param name="collection">選択元のコレクション</param>
+    /// <returns>ランダムに選択された要素</returns>
+    /// <exception cref="ArgumentException">コレクションがnullまたは空の場合にスローされます。</exception>
+    public static T ChooseRandom<T>(IReadOnlyList<T> collection)
     {
-        if (array == null || array.Length == 0)
+        if (collection == null || collection.Count == 0)
         {
-            Logger.Error($"配列{nameof(array)}が null か空です", "SNRRandomCenter: ChooseRandom");
-            throw new ArgumentException("配列が null か空です", nameof(array));
+            Logger.Error($"Collection '{nameof(collection)}' is null or empty.", "SNRRandomCenter:ChooseRandom");
+            throw new ArgumentException("Collection cannot be null or empty.", nameof(collection));
         }
-
-        return array[Range(0, array.Length)];
+        return collection[Range(0, collection.Count)];
     }
 
-    /// <summary> リストからランダムな要素を選択します </summary>
-    /// <typeparam name="T">リストの要素型</typeparam>
-    /// <param name="list">選択元のリスト</param>
-    /// <returns>リストからランダムに選択された要素</returns>
-    public static T ChooseRandom<T>(IList<T> list)
+
+    /// <summary>
+    /// コレクションからランダムな要素を安全に選択します。
+    /// 処理に失敗した場合（コレクションがnullまたは空）、例外をスローせずにfalseを返します。
+    /// 例外を好まないケースのために使用してください。
+    /// </summary>
+    /// <typeparam name="T">コレクションの要素型。</typeparam>
+    /// <param name="collection">選択元のコレクション。</param>
+    /// <param name="result">選択された要素が格納される出力パラメータ。</param>
+    /// <returns>要素の選択に成功した場合はtrue、それ以外はfalse。</returns>
+    public static bool TryChooseRandom<T>(IReadOnlyList<T> collection, out T result)
     {
-        if (list == null || list.Count == 0)
+        if (collection == null || collection.Count == 0)
         {
-            Logger.Error($"リスト{nameof(list)}が null か空です", "SNRRandomCenter: ChooseRandom");
-            throw new ArgumentException("リストが null か空です", nameof(list));
+            result = default;
+            return false;
         }
-        return list[Range(0, list.Count)];
+        result = collection[Range(0, collection.Count)];
+        return true;
     }
 
     /// <summary>
