@@ -355,8 +355,10 @@ public static class SNRRandomCenter
     /// <summary>
     /// UnityEngine.Random.rotationと同等の機能(Rが大文字なことに注意)
     /// ランダムな回転を生成します。
-    /// この処理はアトミック（不可分）であり、スレッドセーフです。
+    /// 注意: このメソッドはジンバルロックを引き起こす可能性があり、一様な分布にはなりません。
+    /// 均一な回転が必要な場合は RotationUniform プロパティを使用してください。
     /// </summary>
+    [Obsolete("Rotationプロパティは一様分布を保証しません。代わりにRotationUniformを使用してください。")]
     public static Quaternion Rotation
     {
         get
@@ -606,7 +608,9 @@ public static class SNRRandomCenter
 
     #endregion
 }
+
 #region サンプル
+
 /// <summary>
 /// SNRRandomCenterの使用例とベンチマーク用のサンプルクラス
 /// 実際の使用方法の参考にしてください
