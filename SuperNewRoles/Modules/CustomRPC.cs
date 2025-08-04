@@ -285,14 +285,14 @@ public static class CustomRPCManager
                             Logger.Warning($"Unknown RPC method ID: {id}");
                             return;
                         }
-                        
+
                         // プレイヤー接続状態をチェック
                         if (PlayerControl.LocalPlayer == null || PlayerControl.AllPlayerControls == null)
                         {
                             Logger.Warning("Player control not initialized, skipping RPC");
                             return;
                         }
-                        
+
                         // インスタンスメソッドならインスタンスを読み込む
                         object? instance = null;
                         if (InstanceMethodSet.Contains(method))
@@ -304,7 +304,7 @@ public static class CustomRPCManager
                                 return;
                             }
                         }
-                        
+
                         // パラメータを読み込み
                         var paramTypesRecv = ParamTypesByMethod[method];
                         var argsRecv = new object[paramTypesRecv.Length];
@@ -320,7 +320,7 @@ public static class CustomRPCManager
                                 return;
                             }
                         }
-                        
+
                         IsRpcReceived = true;
                         Logger.Info($"Invoking RPC: {method.Name}");
                         method.Invoke(instance, argsRecv);
@@ -778,6 +778,20 @@ public static class CustomRPCManager
                 }
             }
         };
+        WriteActions[typeof(byte[])] = (writer, val) =>
+        {
+            if (val == null)
+                writer.Write(0);
+            else
+            {
+                var byteArray = val as byte[];
+                writer.Write(byteArray.Length);
+                foreach (var b in byteArray)
+                {
+                    writer.Write(b);
+                }
+            }
+        };
 
         // ReadActionsの初期化
         ReadActions[typeof(byte)] = reader => reader.ReadByte();
@@ -817,6 +831,7 @@ public static class CustomRPCManager
         ReadActions[typeof(Vector3[])] = reader => ReadVector3Array(reader);
         ReadActions[typeof(uint[])] = reader => ReadUIntArray(reader);
         ReadActions[typeof(ulong[])] = reader => ReadULongArray(reader);
+        ReadActions[typeof(byte[])] = reader => ReadByteArray(reader);
         // IsSubclassOf(typeof(AbilityBase)) や typeof(ICustomRpcObject).IsAssignableFrom(t) は
         // ReadFromType メソッド内で個別処理
     }
@@ -1034,6 +1049,20 @@ public static class CustomRPCManager
         for (int i = 0; i < length; i++)
         {
             array[i] = reader.ReadUInt64();
+        }
+        return array;
+    }
+
+    /// <summary>
+    /// byte[]を読み取るヘルパーメソッド
+    /// </summary>
+    private static byte[] ReadByteArray(MessageReader reader)
+    {
+        int length = reader.ReadInt32();
+        byte[] array = new byte[length];
+        for (int i = 0; i < length; i++)
+        {
+            array[i] = reader.ReadByte();
         }
         return array;
     }
