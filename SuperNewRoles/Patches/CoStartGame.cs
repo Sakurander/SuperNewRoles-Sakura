@@ -100,7 +100,7 @@ class AmongUsClientStartPatch
         {
             Logger.Error("[SNRRandomCenter] CRITICAL: Failed to sync random seed from host within 15 seconds.");
             if (HudManager.Instance != null)
-            {
+            {// TODO 翻訳
                 HudManager.Instance.ShowPopUp("サーバーとの同期に失敗しました。\nゲームが正常に動作しない可能性があります。");
             }
         }

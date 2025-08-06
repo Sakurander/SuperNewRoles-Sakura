@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using SuperNewRoles.CustomOptions.Categories;
@@ -77,9 +76,6 @@ public static class RandomSpawn
             var player = activePlayers[i];
             playerIds[i] = player.PlayerId;
 
-            // ★★★ この一行が変更の核心 ★★★
-            // 元のスポーン位置配列から、毎回完全にランダムで1つ選ぶだけ。
-            // これにより、重複が許可される。
             Vector2 chosenSpawn = SNRRandomCenter.ChooseRandom(spawnPositions);
             assignedPositions[i] = chosenSpawn;
         }
@@ -87,19 +83,16 @@ public static class RandomSpawn
         // 決定した割り当て結果を全クライアントに送信
         RpcSetPlayerSpawns(playerIds, assignedPositions);
     }
-    // 【ステップ1 & 4】新しいRPCの定義と、クライアント側の処理
+
     // このRPCはホストから呼ばれ、全クライアント（ホスト自身含む）で実行される
     [CustomRPC]
     public static void RpcSetPlayerSpawns(byte[] playerIds, Vector2[] positions)
     {
-        // ★★★ ループの前に一度だけC#の配列に変換する ★★★
         var allPlayersArray = PlayerControl.AllPlayerControls.ToArray();
 
         for (int i = 0; i < playerIds.Length; i++)
         {
-            // ★★★ 作成済みの配列に対してFirstOrDefaultを使う ★★★
             PlayerControl player = allPlayersArray.FirstOrDefault(p => p.PlayerId == playerIds[i]);
-
             if (player != null)
             {
                 player.NetTransform.RpcSnapTo(positions[i]);
@@ -119,20 +112,27 @@ public static class RandomSpawn
         // ホストだけが実行する
         if (AmongUsClient.Instance.AmHost)
         {
-            // 0.1秒後にAssignAndSyncSpawnsを実行するタスクを生成
-            new LateTask(() =>
-            {
-                AssignAndSyncSpawns(mapData.SpawnPositions);
-            }, 0.1f, "AssignAndSyncRandomSpawns");
+            AssignAndSyncSpawns(mapData.SpawnPositions);
         }
     }
 
-    [HarmonyPatch(typeof(ShipStatus))]
-    private static class ShipStatus_Patch
+    // ゲーム開始時の役職表示メソッドに直接パッチを当てることで、初回スポーンを確実に実行する。
+    [HarmonyPatch(typeof(IntroCutscene))]
+    public static class GameStartIntro_Patch
     {
-        [HarmonyPatch(nameof(ShipStatus.SpawnPlayer))]
+        // チームがクルーメイトだった場合の処理にフック
+        [HarmonyPatch(nameof(IntroCutscene.BeginCrewmate))]
         [HarmonyPostfix]
-        public static void SpawnPlayer_Postfix()
+        public static void Postfix_BeginCrewmate()
+        {
+            TriggerRandomSpawnForMap(PolusRandomData);
+            TriggerRandomSpawnForMap(FungleRandomData);
+        }
+
+        // チームがインポスターだった場合の処理にフック
+        [HarmonyPatch(nameof(IntroCutscene.BeginImpostor))]
+        [HarmonyPostfix]
+        public static void Postfix_BeginImpostor()
         {
             TriggerRandomSpawnForMap(PolusRandomData);
             TriggerRandomSpawnForMap(FungleRandomData);
