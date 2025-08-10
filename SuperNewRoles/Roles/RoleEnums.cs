@@ -134,6 +134,7 @@ public enum RoleId : short
     EvilMoving,
     NiceRedRidingHood,
     HauntedWolf,
+    RugbyBaller,
 }
 
 public enum GhostRoleId : short
