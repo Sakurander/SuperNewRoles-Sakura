@@ -2,6 +2,7 @@ using UnityEngine;
 using SuperNewRoles.Modules;
 using SuperNewRoles.Events;
 using SuperNewRoles.Modules.Events.Bases;
+using SuperNewRoles.Roles.Impostor;
 
 namespace SuperNewRoles.CustomObject;
 
@@ -10,11 +11,13 @@ public class RugbyBallObject
     private PlayerControl owner;
     private int maxBounces;
     private int currentBounces = 0;
-    private float lifeTime = 10f;
+    private float lifeTime = 10f; // ボールの生存期間
     private bool detached = false;
+    private float invincibilityTimer = 0.2f; // 生成直後の無敵時間（自分や味方に即ヒットするのを防ぐ）
 
     private GameObject ballObject;
     private Rigidbody2D body;
+    private CircleCollider2D ballCollider; // 物理的なコライダーを追加
     private EventListener fixedUpdateEvent;
 
     public RugbyBallObject(PlayerControl owner, Vector3 position, Vector2 velocity, int maxBounces)
@@ -22,23 +25,30 @@ public class RugbyBallObject
         this.owner = owner;
         this.maxBounces = maxBounces;
 
-        ballObject = new GameObject("RugbyBall")
-        { // レイヤーをGhostにすることで、物理エンジンによる衝突を避けつつRaycastの対象にする
-            layer = LayerMask.NameToLayer("Ghost")
-        };
+        // --- オブジェクトのセットアップ ---
+        ballObject = new GameObject("RugbyBall_Physics");
+        ballObject.layer = LayerMask.NameToLayer("Ghost"); // 他プレイヤーを押さないようにGhostレイヤーに設定
         ballObject.transform.position = position;
 
         var spriteRenderer = ballObject.AddComponent<SpriteRenderer>();
-        spriteRenderer.sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png");
+        spriteRenderer.sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png"); // TODO: 仮のスプライト
+        spriteRenderer.sortingLayerName = "Players";
+        spriteRenderer.sortingOrder = 1; // プレイヤーより少し手前に表示
 
+        // --- Rigidbody2Dのセットアップ ---
         body = ballObject.AddComponent<Rigidbody2D>();
         body.gravityScale = 0f;
+        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous; // すり抜け防止
+        body.sharedMaterial = new PhysicsMaterial2D("Bouncy") { bounciness = 1.0f, friction = 0f };
         body.velocity = velocity;
-        body.angularDrag = 0f;
-        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-        body.interpolation = RigidbodyInterpolation2D.Interpolate;
+        body.angularDrag = 0f; // 回転による減速なし
 
+        // --- Collider2Dのセットアップ ---
+        ballCollider = ballObject.AddComponent<CircleCollider2D>();
+        ballCollider.radius = 0.2f;
+        ballCollider.isTrigger = false; // 物理的な衝突を検知するためTriggerはOFF
 
+        // --- イベントリスナーの登録 ---
         fixedUpdateEvent = FixedUpdateEvent.Instance.AddListener(OnFixedUpdate);
     }
 
@@ -53,71 +63,98 @@ public class RugbyBallObject
             return;
         }
 
-        // --- ★自前の壁衝突判定ロジック ---
-        CheckForWallCollision();
+        if (invincibilityTimer > 0)
+        {
+            invincibilityTimer -= Time.fixedDeltaTime;
+        }
 
-        // 進行方向に回転
+        // 常に壁との衝突をチェック
+        CheckForWallAndPlayerCollision();
+
+        // 回転処理
         if (body != null && body.velocity.sqrMagnitude > 0.1f)
         {
             float angle = Mathf.Atan2(body.velocity.y, body.velocity.x) * Mathf.Rad2Deg;
             ballObject.transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
-
-        // ホストのみがプレイヤーへの当たり判定を実行
-        if (owner.AmOwner)
-        {
-            CheckForPlayerCollision();
-        }
     }
 
-    private void CheckForWallCollision()
+    // ★★★ 物理エンジンベースの新しい衝突判定メソッド ★★★
+    private void CheckForWallAndPlayerCollision()
     {
-        float speed = body.velocity.magnitude;
-        Vector2 direction = body.velocity.normalized;
-        // 1フレーム先に進んだ位置を予測し、少しだけ長い距離でRayを飛ばす
-        float distance = speed * Time.fixedDeltaTime + 0.1f;
+        if (body == null) return;
 
-        RaycastHit2D hit = Physics2D.Raycast(ballObject.transform.position, direction, distance, Constants.ShipAndObjectsMask);
+        // 1. 次のフレームの位置を計算
+        Vector2 nextPosition = (Vector2)ballObject.transform.position + body.velocity * Time.fixedDeltaTime;
 
-        if (hit.collider != null)
+        // 2. その位置に移動しようとした場合に衝突するオブジェクトを検出
+        RaycastHit2D[] hits = new RaycastHit2D[1];
+        int hitCount = ballCollider.Cast(body.velocity.normalized, hits, body.velocity.magnitude * Time.fixedDeltaTime);
+
+        if (hitCount > 0)
         {
-            // 壁に当たった場合、速度を反射させる
-            Vector2 reflectedVelocity = Vector2.Reflect(body.velocity, hit.normal);
-            body.velocity = reflectedVelocity;
+            RaycastHit2D hit = hits[0];
 
-            currentBounces++;
-            // TODO: バウンド音を再生
-
-            if (currentBounces >= maxBounces)
+            // --- プレイヤーとの衝突判定 (ホストのみ) ---
+            if (owner.AmOwner && invincibilityTimer <= 0)
             {
-                Detach();
-            }
-        }
-    }
-
-    // 波動砲のロジックを参考にした当たり判定
-    private void CheckForPlayerCollision()
-    {// IsTouchingAllは重いので、OverlapCircleで代用
-        Collider2D[] hitColliders = Physics2D.OverlapCircleAll(ballObject.transform.position, 0.2f, Constants.PlayersOnlyMask);
-
-        foreach (var hitCollider in hitColliders)
-        {
-            PlayerControl target = hitCollider.GetComponent<PlayerControl>();
-            if (target != null && target.PlayerId != owner.PlayerId && !target.Data.IsDead)
-            {
-                bool isImpostorTeammate = target.Data.Role.IsImpostor && owner.Data.Role.IsImpostor;
-
-                if (!isImpostorTeammate)
+                var hitPlayer = hit.collider.GetComponent<PlayerControl>();
+                if (hitPlayer != null && !hitPlayer.Data.IsDead)
                 {
-                    RpcKillTarget(owner.PlayerId, target.PlayerId);
-                    // ★ isPlayerHitフラグは不要。DetachはRPCを受け取った各クライアントでボールが消えることで実現する。
-                    // サーバー側（ホスト）では次のフレームでDetach()が呼ばれる。
+                    HandlePlayerCollision(hitPlayer);
+                    return; // プレイヤーに当たったらそのフレームは終了
+                }
+            }
+
+            // --- 壁との衝突判定 ---
+            // isTriggerでないコライダーはすべて壁とみなす
+            if (!hit.collider.isTrigger)
+            {
+                // バウンド音を再生
+                // AssetManager.PlaySoundFromBundle("RugbyBallBounce.wav", false, 0.5f, ballObject.transform.position);
+
+                currentBounces++;
+                Logger.Info($"RugbyBall bounced on Collider: {hit.collider.name}! ({currentBounces}/{maxBounces})", "RugbyBaller");
+
+                // 速度を少し減速させる（お好みで調整）
+                body.velocity *= 0.95f;
+
+                if (currentBounces >= maxBounces)
+                {
                     Detach();
-                    break;
                 }
             }
         }
+
+        // 3. 衝突がなければ、計算した次の位置へ移動
+        body.MovePosition(nextPosition);
     }
+
+    // プレイヤー衝突処理を分離
+    private void HandlePlayerCollision(PlayerControl targetPlayer)
+    {
+        // 自分自身への衝突（自爆スタン）
+        if (targetPlayer.PlayerId == owner.PlayerId)
+        {
+            RpcHandleSelfCollision(owner.PlayerId);
+            Detach();
+            return;
+        }
+
+        // 味方インポスターへの衝突（スロー効果）
+        if (targetPlayer.Data.Role.IsImpostor && owner.Data.Role.IsImpostor)
+        {
+            RpcHandleAllyCollision(targetPlayer.PlayerId);
+            // 味方に当たった場合はボールを消さずに跳ね返す（お好みで変更）
+            // Detach();
+            return;
+        }
+
+        // それ以外のプレイヤーへの衝突（キル）
+        RpcKillTarget(owner.PlayerId, targetPlayer.PlayerId);
+        Detach();
+    }
+
 
     [CustomRPC]
     public static void RpcKillTarget(byte ownerId, byte targetId)
@@ -127,7 +164,30 @@ public class RugbyBallObject
 
         if (exTarget != null && exOwner != null && exTarget.IsAlive())
         {
+            // 特殊な死体を実装するまでは通常のキル
             exOwner.RpcCustomDeath(exTarget, CustomDeathType.RugbyBall);
+        }
+    }
+
+    [CustomRPC]
+    public static void RpcHandleSelfCollision(byte ownerId)
+    {
+        ExPlayerControl exOwner = ExPlayerControl.ById(ownerId);
+        if (exOwner != null && exOwner.IsAlive())
+        {
+            // TODO: スタン処理を実装
+            SuperNewRoles.Logger.Info($"RugbyBaller {exOwner.Player.name} stunned themself!");
+        }
+    }
+
+    [CustomRPC]
+    public static void RpcHandleAllyCollision(byte allyId)
+    {
+        ExPlayerControl exAlly = ExPlayerControl.ById(allyId);
+        if (exAlly != null && exAlly.IsAlive())
+        {
+            // TODO: スロー効果を実装
+            SuperNewRoles.Logger.Info($"RugbyBaller hit ally {exAlly.Player.name}!");
         }
     }
 
@@ -135,12 +195,10 @@ public class RugbyBallObject
     {
         if (detached) return;
         detached = true;
-
         fixedUpdateEvent?.RemoveListener();
-
         if (ballObject != null)
         {
-            Object.Destroy(ballObject);
+            UnityEngine.Object.Destroy(ballObject);
         }
     }
 }

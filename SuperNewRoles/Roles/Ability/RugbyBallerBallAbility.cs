@@ -71,13 +71,23 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
     {
         if (trajectoryLine != null) trajectoryLine.enabled = false;
 
+        // マウスカーソル（またはジョイスティック）の方向を取得
         Vector3 mouseDirection = Input.mousePosition - new Vector3(Screen.width / 2, Screen.height / 2);
+        // TODO ホストがコントローラーを使っている場合も考慮（これはより高度な実装）
+        // var joystickDirection = DestroyableSingleton<HudManager>.Instance.joystick.Delta;
+
         Vector3 shotForward = new Vector3(mouseDirection.x, mouseDirection.y, 0).normalized;
+
+        // 速度が0にならないように最低限のベクトルを保証
+        if (shotForward.sqrMagnitude < 0.1f)
+        {
+            shotForward = PlayerControl.LocalPlayer.MyPhysics.FlipX ? Vector3.left : Vector3.right;
+        }
+
 
         float ballSpeed = 15f;
         Vector2 velocity = shotForward * ballSpeed;
 
-        // ★ボールオブジェクトの生成をRPC経由で行う
         RpcSpawnRugbyBall(PlayerControl.LocalPlayer, PlayerControl.LocalPlayer.GetTruePosition(), velocity, RugbyBaller.MaxBounceCount);
 
         ResetTimer();

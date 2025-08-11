@@ -38,6 +38,7 @@ public enum FinalStatus
     SpelunkerOpenDoor,
     NunDeath,
     LadderDeath,
+    RugbyBall,
 }
 
 public static class FinalStatusListener
