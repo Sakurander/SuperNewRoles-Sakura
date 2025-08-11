@@ -19,7 +19,7 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
 
     // チャージ機能 (IButtonEffect)
     public bool isEffectActive { get; set; }
-    public Action OnEffectEnds => ShootBall; // チャージ完了時のアクション
+    public Action OnEffectEnds => () => { new LateTask(() => ShootBall(), 0f, "RugbyBaller ShootBall Task"); };// チャージ完了時のアクション
     public float EffectDuration => RugbyBaller.ShootDuration; // チャージ時間
     public float EffectTimer { get; set; }
     public bool effectCancellable => true; // チャージキャンセル可能
@@ -105,21 +105,21 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
 
     // --- 内部ロジック ---
     private void ShootBall()
-    {
+    { // ★念のためログを追加
+        Logger.Info("[RugbyBallerAbility] Executing ShootBall on main thread.");
         if (trajectoryLine != null) trajectoryLine.enabled = false;
-        // マウスの方向を取得
+
         Vector3 mouseDirection = Input.mousePosition - new Vector3(Screen.width / 2, Screen.height / 2);
         Vector3 shotForward = new Vector3(mouseDirection.x, mouseDirection.y, 0).normalized;
 
-        float ballSpeed = 15f; // 速度を調整
+        float ballSpeed = 15f;
         Vector2 velocity = shotForward * ballSpeed;
 
-        // 自分のPlayerControlを渡して、自爆しないようにする
-        new RugbyBall(PlayerControl.LocalPlayer, PlayerControl.LocalPlayer.GetTruePosition(), velocity, RugbyBaller.MaxBounceCount);
+        RugbyBall.Create(PlayerControl.LocalPlayer, PlayerControl.LocalPlayer.GetTruePosition(), velocity, RugbyBaller.MaxBounceCount);
 
-        // 発射音を再生
-        // TODO:     AssetManager.PlaySoundFromBundle("RugbyBallerShoot");
+        // TODO: AssetManager.PlaySoundFromBundle("RugbyBallerShoot");
 
+        // ★ボール発射後もクールダウンを開始する
         ResetTimer();
     }
 

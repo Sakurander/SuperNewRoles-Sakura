@@ -32,10 +32,10 @@ internal interface IButtonEffect
     }
     public virtual void OnCancel(ActionButton actionButton)
     {
-       if (isEffectActive)
+        // ★チャージ状態を解除する責務のみに絞る
+        if (isEffectActive)
         {
             isEffectActive = false;
-            // OnEffectEnds() は呼ばない（キャンセルなので）
             Logger.Info("[IButtonEffect] OnCancel: Charge Cancelled.");
         }
     }

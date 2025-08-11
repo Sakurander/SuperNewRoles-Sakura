@@ -267,6 +267,7 @@ public abstract class CustomButtonBase : AbilityBase
         {
             Logger.Info("[CustomButtonBase] OnClickEvent: Handling Cancel");
             buttonEffect.OnCancel(actionButton);
+            ResetTimer(); // ★キャンセル時にクールダウンをリセット
             return;
         }
 
