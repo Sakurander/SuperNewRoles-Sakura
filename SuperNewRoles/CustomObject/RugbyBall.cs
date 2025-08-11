@@ -1,111 +1,130 @@
 using UnityEngine;
 using SuperNewRoles.Modules;
+using SuperNewRoles.Events;
+using SuperNewRoles.Modules.Events.Bases;
 
 namespace SuperNewRoles.CustomObject;
 
-// MonoBehaviourを継承した1つのクラスに統合
-public class RugbyBall : MonoBehaviour
+public class RugbyBallObject
 {
     private PlayerControl owner;
     private int maxBounces;
-    private int currentBounces = 0;
     private float lifeTime = 10f;
+    private bool detached = false;
 
-    private static Sprite _sprite;
+    private GameObject ballObject;
+    private Rigidbody2D body;
+    private EventListener fixedUpdateEvent;
+    private RugbyBallCollisionHelper collisionHelper;
 
-    // RugbyBallオブジェクトを安全に生成して初期化する静的メソッド
-    public static void Create(PlayerControl owner, Vector3 position, Vector2 velocity, int maxBounces)
+    public RugbyBallObject(PlayerControl owner, Vector3 position, Vector2 velocity, int maxBounces)
     {
-        // まずGameObjectを生成
-        var ballObject = new GameObject("RugbyBall")
+        this.owner = owner;
+        this.maxBounces = maxBounces;
+
+        // ★コンストラクタ内でGameObjectとコンポーネントを生成
+        ballObject = new GameObject("RugbyBall")
         {
             layer = LayerMask.NameToLayer("Players")
         };
         ballObject.transform.position = position;
 
-        // 次にこのRugbyBallコンポーネントを追加
-        var ballComponent = ballObject.AddComponent<RugbyBall>();
+        var spriteRenderer = ballObject.AddComponent<SpriteRenderer>();
+        spriteRenderer.sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png"); // 画像名を適切に
 
-        // コンポーネントの初期化メソッドを呼び出す
-        ballComponent.Initialize(owner, maxBounces, velocity);
-    }
-
-    // 初期化メソッド
-    private void Initialize(PlayerControl owner, int maxBounces, Vector2 velocity)
-    {
-        this.owner = owner;
-        this.maxBounces = maxBounces;
-
-        // スプライトの設定
-        var spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
-        if (_sprite == null)
-        {// ここでラグビーボールの画像ファイルを読み込みます
-            _sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png"); // TODO : 画像ファイル名を適切に変更
-        }
-        spriteRenderer.sprite = _sprite;
-
-        // 物理演算の設定
-        var body = gameObject.AddComponent<Rigidbody2D>();
+        body = ballObject.AddComponent<Rigidbody2D>();
         body.gravityScale = 0f;
         body.velocity = velocity;
         body.angularDrag = 0f;
-        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous; // 衝突検出精度を上げる
+        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
-        var collider = gameObject.AddComponent<CircleCollider2D>();
+        var collider = ballObject.AddComponent<CircleCollider2D>();
         collider.radius = 0.2f;
 
-        var physicsMaterial = new PhysicsMaterial2D
-        {
-            bounciness = 1.0f,
-            friction = 0.0f
-        };
+        var physicsMaterial = new PhysicsMaterial2D { bounciness = 1.0f, friction = 0.0f };
         collider.sharedMaterial = physicsMaterial;
+
+        // 衝突検知用のヘルパーコンポーネントを追加
+        collisionHelper = ballObject.AddComponent<RugbyBallCollisionHelper>();
+        collisionHelper.Initialize(this);
+
+        fixedUpdateEvent = FixedUpdateEvent.Instance.AddListener(OnFixedUpdate);
     }
 
-    void Update()
+    public void OnFixedUpdate()
     {
-        lifeTime -= Time.deltaTime;
-        if (lifeTime <= 0)
+        if (detached) return;
+
+        lifeTime -= Time.fixedDeltaTime;
+        if (lifeTime <= 0 || owner == null || owner.Data.IsDead)
         {
-            Destroy(gameObject);
+            Detach();
+            return;
         }
 
-        // 常に進行方向に回転させる
-        var body = GetComponent<Rigidbody2D>();
         if (body != null && body.velocity.sqrMagnitude > 0.1f)
         {
             float angle = Mathf.Atan2(body.velocity.y, body.velocity.x) * Mathf.Rad2Deg;
-            transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
+            ballObject.transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
     }
 
-    void OnCollisionEnter2D(Collision2D collision)
+    // ヘルパーコンポーネントから呼び出される
+    public void HandleCollision(Collision2D collision)
     {
-        // プレイヤーに当たったかチェック
-        var target = collision.gameObject.GetComponent<ExPlayerControl>();
+        if (detached) return;
+
+        PlayerControl target = collision.gameObject.GetComponent<PlayerControl>();
         if (target != null)
         {
-            if (target.PlayerId == owner.PlayerId || (target.Data.Role.IsImpostor && owner.Data.Role.IsImpostor))
-            {
-                return;
-            }
+            //if (target.PlayerId == owner.PlayerId || (target.Data.Role.IsImpostor && owner.Data.Role.IsImpostor)) return;
 
             if (!target.Data.IsDead)
             {
-                target.CustomDeath(CustomDeathType.Kill, source: ExPlayerControl.LocalPlayer);
+                Logger.Info($"[RugbyBallObject] Hit Player: {target.PlayerId} by {owner.PlayerId}");
+                // ModHelpers.CheckMurderAttemptAndKill(owner, target, showAnimation: false, CustomDeathType.Rugby);
             }
-            Destroy(gameObject);
+            Detach(); // プレイヤーに当たったら消滅
             return;
         }
 
         // 壁に当たった場合
-        currentBounces++;
-        // バウンド音を再生
-        // TODO AssetManager.PlaySoundFromBundle("RugbyBallerBounce");
+        collisionHelper.currentBounces++;
+        // TODO: バウンド音
 
-        if (currentBounces >= maxBounces)
+        if (collisionHelper.currentBounces >= maxBounces)
         {
-            Destroy(gameObject);
+            Detach();
         }
+    }
+
+    public void Detach()
+    {
+        if (detached) return;
+        detached = true;
+
+        fixedUpdateEvent?.RemoveListener();
+
+        if (ballObject != null)
+        {
+            Object.Destroy(ballObject);
+        }
+    }
+}
+
+// 衝突イベントを受け取るためだけのシンプルなMonoBehaviour
+public class RugbyBallCollisionHelper : MonoBehaviour
+{
+    private RugbyBallObject parent;
+    public int currentBounces = 0;
+
+    public void Initialize(RugbyBallObject parent)
+    {
+        this.parent = parent;
+    }
+
+    void OnCollisionEnter2D(Collision2D collision)
+    {
+        parent?.HandleCollision(collision);
     }
 }
