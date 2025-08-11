@@ -1,9 +1,12 @@
+// SuperNewRoles/CustomObject/RugbyBallObject.cs
+
 using UnityEngine;
 using SuperNewRoles.Modules;
 using SuperNewRoles.Events;
 using SuperNewRoles.Modules.Events.Bases;
 using SuperNewRoles.Roles.Impostor;
 using System.Linq;
+using SuperNewRoles.MapDatabase;
 
 namespace SuperNewRoles.CustomObject;
 
@@ -18,42 +21,37 @@ public class RugbyBallObject
 
     private GameObject ballObject;
     private Rigidbody2D body;
-    private CircleCollider2D ballCollider;
     private EventListener fixedUpdateEvent;
 
-    // ★★★ 衝突判定に必要なマスクをここで定義 ★★★
-    private static int collisionMask = -1;
+    // MapDatabaseのインスタンスを保持
+    private MapDatabase.MapDatabase currentMapData;
 
     public RugbyBallObject(PlayerControl owner, Vector3 position, Vector2 velocity, int maxBounces)
     {
         this.owner = owner;
         this.maxBounces = maxBounces;
 
-        // ★★★ レイヤーマスクの初期化（一度だけ行う） ★★★
-        if (collisionMask == -1)
+        // ★ 現在のマップデータを取得
+        currentMapData = MapDatabase.MapDatabase.GetCurrentMapData();
+        if (currentMapData == null)
         {
-            // 壁、オブジェクト、そしてプレイヤー自身を検出対象とする
-            collisionMask = Constants.ShipAndObjectsMask | Constants.PlayersOnlyMask;
+            Logger.Error("Could not get current map data for RugbyBall!", "RugbyBaller");
+            Detach();
+            return;
         }
 
         ballObject = new GameObject("RugbyBall_Physics");
-        // レイヤーはGhostのまま。物理的な押し出しは行わないため。
-        ballObject.layer = LayerMask.NameToLayer("Ghost");
+        ballObject.layer = LayerMask.NameToLayer("Players"); // RaycastのためにPlayersレイヤーに変更
         ballObject.transform.position = position;
 
         var spriteRenderer = ballObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png"); // TODO: 仮
         spriteRenderer.sortingLayerName = "Players";
+        spriteRenderer.sortingOrder = 5; // プレイヤーより手前
 
         body = ballObject.AddComponent<Rigidbody2D>();
         body.gravityScale = 0f;
-        body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
         body.velocity = velocity;
-
-        ballCollider = ballObject.AddComponent<CircleCollider2D>();
-        ballCollider.radius = 0.2f;
-        // isTriggerはfalseのまま。Castで衝突を検知する。
-        ballCollider.isTrigger = false;
 
         fixedUpdateEvent = FixedUpdateEvent.Instance.AddListener(OnFixedUpdate);
     }
@@ -74,111 +72,89 @@ public class RugbyBallObject
             invincibilityTimer -= Time.fixedDeltaTime;
         }
 
-        // ★★★ 新しい衝突解決メソッドを呼び出す ★★★
-        ResolveCollisionsAndMove();
+        CheckCollisionAndMove();
 
-        // 回転処理
         if (body != null && body.velocity.sqrMagnitude > 0.1f)
         {
             float angle = Mathf.Atan2(body.velocity.y, body.velocity.x) * Mathf.Rad2Deg;
             ballObject.transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
+
+        if (owner.AmOwner)
+        {
+            CheckForPlayerCollision();
+        }
     }
 
-    // ★★★ 衝突解決と移動をまとめて行う新メソッド ★★★
-    private void ResolveCollisionsAndMove()
+    // ★★★ MapDatabaseを活用した新しい衝突判定メソッド ★★★
+    private void CheckCollisionAndMove()
     {
-        if (body == null || ballCollider == null) return;
+        if (body == null) return;
 
-        float deltaTime = Time.fixedDeltaTime;
-        Vector2 currentVelocity = body.velocity;
-        float distanceToMove = currentVelocity.magnitude * deltaTime;
+        Vector2 currentPos = ballObject.transform.position;
+        Vector2 velocity = body.velocity;
+        Vector2 nextPos = currentPos + velocity * Time.fixedDeltaTime;
 
-        // 移動距離が非常に小さい場合は処理をスキップ
-        if (distanceToMove < 0.001f)
+        // 1. 次のフレームの位置が「歩行可能エリア」の外かどうかを判定
+        if (!currentMapData.CheckMapArea(nextPos))
         {
-            return;
+            // 2. 衝突したとみなし、反射処理を行う
+            // Raycastで正確な衝突法線を取得する
+            RaycastHit2D hit = Physics2D.Raycast(currentPos, velocity.normalized, velocity.magnitude * Time.fixedDeltaTime, Constants.ShipAndObjectsMask);
+
+            Vector2 reflectionNormal = hit.collider != null ? hit.normal : -velocity.normalized;
+
+            ReflectAndBounce(reflectionNormal);
         }
-
-        // 1. 移動経路上にある全ての衝突を検出
-        RaycastHit2D[] hits = Physics2D.CircleCastAll(
-            body.position,
-            ballCollider.radius,
-            currentVelocity.normalized,
-            distanceToMove,
-            collisionMask
-        );
-
-        // 2. 衝突があった場合
-        if (hits.Length > 0)
-        {
-            // ★★★ 自分自身とオーナーを除外してから、最も近い衝突オブジェクトを取得 ★★★
-            var hit = hits
-                .Where(h => !h.collider.isTrigger && h.collider.gameObject != this.ballObject && h.collider.gameObject != owner.gameObject)
-                .OrderBy(h => h.distance)
-                .FirstOrDefault();
-
-            // 有効な衝突があった場合
-            if (hit.collider != null)
-            {
-                // 衝突点まで移動
-                body.position = body.position + currentVelocity.normalized * hit.distance;
-
-                // プレイヤーとの衝突か？
-                PlayerControl hitPlayer = hit.collider.GetComponent<PlayerControl>();
-                if (hitPlayer != null && invincibilityTimer <= 0)
-                {
-                    HandlePlayerCollision(hitPlayer);
-                    return;
-                }
-                else if (hitPlayer == null) // プレイヤー以外のオブジェクト（壁など）との衝突
-                {
-                    // 速度を反射させる
-                    Vector2 reflectedVelocity = Vector2.Reflect(currentVelocity, hit.normal);
-                    body.velocity = reflectedVelocity * 0.95f; // 少し減速
-
-                    currentBounces++;
-                    // TODO: バウンド音
-                    Logger.Info($"RugbyBall bounced on {hit.collider.name}! ({currentBounces}/{maxBounces})", "RugbyBaller");
-
-                    if (currentBounces >= maxBounces)
-                    {
-                        Detach();
-                        return;
-                    }
-                }
-            }
-            else // 有効な衝突がない場合（自分やオーナーのみだった場合）
-            {
-                body.position += currentVelocity * deltaTime;
-            }
-        }
-        // 3. 衝突がなかった場合
         else
         {
-            body.position += currentVelocity * deltaTime;
+            // 3. 衝突がなければそのまま移動
+            ballObject.transform.position = nextPos;
         }
     }
 
+    private void ReflectAndBounce(Vector2 normal)
+    {
+        body.velocity = Vector2.Reflect(body.velocity, normal) * 0.95f; // 少し減速
+        currentBounces++;
+        Logger.Info($"RugbyBall bounced! ({currentBounces}/{maxBounces})", "RugbyBaller");
+
+        // TODO: バウンド音を再生
+
+        if (currentBounces >= maxBounces)
+        {
+            Detach();
+        }
+    }
+
+    // プレイヤーとの衝突判定ロジック (変更なし)
+    private void CheckForPlayerCollision()
+    {
+        if (invincibilityTimer > 0) return;
+
+        foreach (var p in PlayerControl.AllPlayerControls)
+        {
+            if (p == null || p.Data.IsDead || p.PlayerId == owner.PlayerId) continue;
+
+            if (Vector2.Distance(ballObject.transform.position, p.GetTruePosition()) < 0.4f)
+            {
+                HandlePlayerCollision(p);
+                return;
+            }
+        }
+    }
 
     private void HandlePlayerCollision(PlayerControl targetPlayer)
     {
-        if (targetPlayer.Data.IsDead) return;
-
-        // ★★★ 味方インポスターへの衝突判定を修正 ★★★
-        if (targetPlayer.Data.Role != null && targetPlayer.Data.Role.IsImpostor && owner.Data.Role != null && owner.Data.Role.IsImpostor)
+        // 味方インポスターへの衝突
+        if (targetPlayer.Data.Role.IsImpostor && owner.Data.Role.IsImpostor)
         {
-            // 自分自身はここでは処理しない（既に上で除外されているため）
-            if (targetPlayer.PlayerId != owner.PlayerId)
-            {
-                RpcHandleAllyCollision(targetPlayer.PlayerId);
-                // 味方に当たった場合は跳ね返る
-                body.velocity *= -0.5f;
-            }
+            RpcHandleAllyCollision(targetPlayer.PlayerId);
+            body.velocity *= -0.5f;
             return;
         }
 
-        // それ以外のプレイヤー（クルー陣営）への衝突（キル）
+        // それ以外のプレイヤーへの衝突（キル）
         if (owner.AmOwner)
         {
             RpcKillTarget(owner.PlayerId, targetPlayer.PlayerId);
@@ -186,8 +162,7 @@ public class RugbyBallObject
         Detach();
     }
 
-
-    // --- RPCs (変更なし) ---
+    // --- RPCs (自爆スタン処理は後回し) ---
     [CustomRPC]
     public static void RpcKillTarget(byte ownerId, byte targetId)
     {
@@ -201,48 +176,12 @@ public class RugbyBallObject
     }
 
     [CustomRPC]
-    public static void RpcHandleSelfCollision(byte ownerId)
-    {
-        ExPlayerControl exOwner = ExPlayerControl.ById(ownerId);
-        if (exOwner != null && exOwner.IsAlive())
-        {
-            // ★★★ スタン処理を実装 ★★★
-            if (exOwner.AmOwner)
-            {
-                // 一定時間移動不可にする
-                exOwner.Player.moveable = false;
-                new LateTask(() =>
-                {
-                    if (exOwner != null && exOwner.Player != null)
-                    {
-                        exOwner.Player.moveable = true;
-                    }
-                }, RugbyBaller.SelfStunTime);
-            }
-            Logger.Info($"RugbyBaller {exOwner.Player.name} stunned themself!", "RugbyBaller");
-        }
-    }
-
-    [CustomRPC]
     public static void RpcHandleAllyCollision(byte allyId)
     {
         ExPlayerControl exAlly = ExPlayerControl.ById(allyId);
         if (exAlly != null && exAlly.IsAlive())
         {
-            // ★★★ スロー効果を実装 ★★★
-            if (exAlly.AmOwner)
-            {
-                // SpeedBoosterのロジックを参考に速度を変更する
-                float originalSpeed = exAlly.Player.MyPhysics.Speed;
-                exAlly.Player.MyPhysics.Speed *= 0.5f; // 例として速度を半分に
-                new LateTask(() =>
-                {
-                    if (exAlly != null && exAlly.Player != null)
-                    {
-                        exAlly.Player.MyPhysics.Speed = originalSpeed;
-                    }
-                }, RugbyBaller.AllySlowTime);
-            }
+            // TODO: スロー効果を実装
             Logger.Info($"RugbyBaller hit ally {exAlly.Player.name}!", "RugbyBaller");
         }
     }
