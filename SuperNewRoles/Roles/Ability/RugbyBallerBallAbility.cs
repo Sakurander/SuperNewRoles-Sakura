@@ -3,32 +3,59 @@ using UnityEngine;
 using SuperNewRoles.Roles.Ability.CustomButton;
 using SuperNewRoles.Modules;
 using SuperNewRoles.CustomObject;
-using SuperNewRoles.Roles.Impostor;
+using SuperNewRoles.Modules.Events.Bases;
+using SuperNewRoles.Modules.Events;
+using SuperNewRoles.Roles.Impostor; // RugbyBallerクラスのオプションにアクセスするために必要
 
 namespace SuperNewRoles.Roles.Ability;
 
 public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
 {
+    // --- フィールド定義 ---
     public override float DefaultTimer => RugbyBaller.ShootCooldown;
     public override string buttonText => ModTranslation.GetString("RugbyBallerShootButtonText");
     public override Sprite Sprite => AssetManager.GetAsset<Sprite>("DoorrDoorButton.png"); // TODO : 仮のアイコン
     protected override KeyType keytype => KeyType.Ability1;
 
-    // IButtonEffect の実装 (チャージ機能)
+    // チャージ機能 (IButtonEffect)
     public bool isEffectActive { get; set; }
     public Action OnEffectEnds => ShootBall; // チャージ完了時のアクション
     public float EffectDuration => RugbyBaller.ShootDuration; // チャージ時間
     public float EffectTimer { get; set; }
     public bool effectCancellable => true; // チャージキャンセル可能
 
-    public RugbyBallerBallAbility()
+    // 予測軌道描画用
+    private LineRenderer trajectoryLine;
+    // 速度低下用
+    private EventListener<PlayerPhysicsFixedUpdateEventData> _physicsUpdateListener;
+
+    // --- コンストラクタ ---
+    public RugbyBallerBallAbility() { }
+
+    // --- Abilityライフサイクル ---
+    public override void AttachToLocalPlayer()
     {
-        // 初期化
+        base.AttachToLocalPlayer();
+        // 予測軌道用のLineRendererを初期化
+        SetupTrajectoryLine();
+        // 物理演算更新イベントを購読して速度低下を処理
+        _physicsUpdateListener = PlayerPhysicsFixedUpdateEvent.Instance.AddListener(OnPhysicsFixedUpdate);
     }
 
+    public override void DetachToLocalPlayer()
+    {
+        base.DetachToLocalPlayer();
+        if (trajectoryLine != null)
+        {
+            UnityEngine.Object.Destroy(trajectoryLine.gameObject);
+            trajectoryLine = null;
+        }
+        _physicsUpdateListener?.RemoveListener();
+    }
+
+    // --- ボタンの振る舞い ---
     public override bool CheckIsAvailable()
     {
-        // 通常キルボタンと競合しないように、ここではチャージ中でないときだけtrueを返す
         return PlayerControl.LocalPlayer.CanMove && !isEffectActive;
     }
 
@@ -37,36 +64,101 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
         // ボタンが押されたらチャージ開始
         isEffectActive = true;
         EffectTimer = EffectDuration;
-
-        // チャージ中は移動速度を低下させる
-        // (PlayerPhysicsの速度を直接変更するパッチが必要になります)
+        if (trajectoryLine != null) trajectoryLine.enabled = true;
     }
 
-    private void ShootBall()
-    {
-        // Kunoichi.cs を参考に、マウスの方向を取得
-        Vector3 mouseDirection = Input.mousePosition - new Vector3(Screen.width / 2, Screen.height / 2);
-        Vector3 shotForward = new Vector3(mouseDirection.x, mouseDirection.y, 0).normalized;
-
-        // ボールの初速を設定
-        float ballSpeed = 10f; // 速度は調整が必要
-        Vector2 velocity = shotForward * ballSpeed;
-
-        // ボールを生成
-        new RugbyBall(PlayerControl.LocalPlayer.GetTruePosition(), velocity, RugbyBaller.MaxBounceCount);
-
-        // 発射音を再生する処理をここに追加します
-
-        // クールダウンを開始
-        ResetTimer();
-    }
-
-    // チャージ中にボタンが離された場合 (IButtonEffectのデフォルト実装をオーバーライド)
+    // チャージ中にボタンが離された (キャンセル)
     public void OnCancel(ActionButton actionButton)
     {
         isEffectActive = false;
-        // チャージが中断されたのでタイマーをリセット
         EffectTimer = EffectDuration;
         actionButton.cooldownTimerText.color = Palette.EnabledColor;
+        if (trajectoryLine != null) trajectoryLine.enabled = false;
+    }
+
+    // 毎フレームの更新処理
+    public override void OnUpdate()
+    {
+        base.OnUpdate();
+        // チャージ中に予測軌道を描画
+        if (isEffectActive && RugbyBaller.ShowTrajectory)
+        {
+            UpdateTrajectory();
+        }
+    }
+
+    // --- 内部ロジック ---
+    private void ShootBall()
+    {
+        if (trajectoryLine != null) trajectoryLine.enabled = false;
+        // マウスの方向を取得
+        Vector3 mouseDirection = Input.mousePosition - new Vector3(Screen.width / 2, Screen.height / 2);
+        Vector3 shotForward = new Vector3(mouseDirection.x, mouseDirection.y, 0).normalized;
+
+        float ballSpeed = 15f; // 速度を調整
+        Vector2 velocity = shotForward * ballSpeed;
+
+        // 自分のPlayerControlを渡して、自爆しないようにする
+        new RugbyBall(PlayerControl.LocalPlayer, PlayerControl.LocalPlayer.GetTruePosition(), velocity, RugbyBaller.MaxBounceCount);
+
+        // 発射音を再生
+        // TODO:     AssetManager.PlaySoundFromBundle("RugbyBallerShoot");
+
+        ResetTimer();
+    }
+
+    // --- 予測軌道関連 ---
+    private void SetupTrajectoryLine()
+    {
+        var lineObj = new GameObject("TrajectoryLine");
+        lineObj.transform.SetParent(PlayerControl.LocalPlayer.transform);
+        trajectoryLine = lineObj.AddComponent<LineRenderer>();
+        trajectoryLine.material = new Material(Shader.Find("Sprites/Default"));
+        trajectoryLine.startColor = new Color(1f, 1f, 1f, 0.5f);
+        trajectoryLine.endColor = new Color(1f, 1f, 1f, 0.1f);
+        trajectoryLine.startWidth = 0.1f;
+        trajectoryLine.endWidth = 0.1f;
+        trajectoryLine.positionCount = 3; // 始点、反射点、終点
+        trajectoryLine.sortingLayerName = "Players";
+        trajectoryLine.enabled = false;
+    }
+
+    private void UpdateTrajectory()
+    {
+        if (trajectoryLine == null) return;
+
+        Vector2 startPos = PlayerControl.LocalPlayer.GetTruePosition();
+        Vector3 mouseDirection = Input.mousePosition - new Vector3(Screen.width / 2, Screen.height / 2);
+        Vector2 direction = new Vector2(mouseDirection.x, mouseDirection.y).normalized;
+
+        trajectoryLine.SetPosition(0, startPos);
+
+        // Raycastで壁との衝突を検知
+        RaycastHit2D hit = Physics2D.Raycast(startPos, direction, 100f, Constants.ShipAndObjectsMask);
+
+        if (hit.collider != null)
+        {
+            trajectoryLine.SetPosition(1, hit.point);
+
+            // 反射ベクトルを計算
+            Vector2 reflectedDirection = Vector2.Reflect(direction, hit.normal);
+            trajectoryLine.SetPosition(2, hit.point + reflectedDirection * 10f);
+        }
+        else
+        {
+            // 壁に当たらなかった場合
+            trajectoryLine.SetPosition(1, startPos + direction * 100f);
+            trajectoryLine.SetPosition(2, startPos + direction * 100f); // 終点も同じ位置に
+        }
+    }
+
+    // --- 速度低下 ---
+    private void OnPhysicsFixedUpdate(PlayerPhysicsFixedUpdateEventData data)
+    {
+        if (data.Instance.AmOwner && isEffectActive)
+        {
+            // チャージ中は速度を半分にする
+            data.Instance.body.velocity *= 0.5f;
+        }
     }
 }
