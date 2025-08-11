@@ -1,9 +1,7 @@
-using System.Linq;
 using UnityEngine;
 using SuperNewRoles.Modules;
 using SuperNewRoles.Events;
 using SuperNewRoles.Modules.Events.Bases;
-using SuperNewRoles.Roles.Impostor; // CustomDeathType.Rugby のため
 
 namespace SuperNewRoles.CustomObject;
 
@@ -11,70 +9,89 @@ public class RugbyBallObject
 {
     private PlayerControl owner;
     private int maxBounces;
+    private int currentBounces = 0;
     private float lifeTime = 10f;
     private bool detached = false;
 
     private GameObject ballObject;
     private Rigidbody2D body;
     private EventListener fixedUpdateEvent;
-    private RugbyBallCollisionHelper collisionHelper;
-    private bool isPlayerHit = false; // プレイヤーに命中したかどうかのフラグ
 
     public RugbyBallObject(PlayerControl owner, Vector3 position, Vector2 velocity, int maxBounces)
     {
         this.owner = owner;
         this.maxBounces = maxBounces;
 
-        // ★コンストラクタ内でGameObjectとコンポーネントを生成
         ballObject = new GameObject("RugbyBall")
-        {
-            layer = LayerMask.NameToLayer("Players")
+        { // レイヤーをGhostにすることで、物理エンジンによる衝突を避けつつRaycastの対象にする
+            layer = LayerMask.NameToLayer("Ghost")
         };
         ballObject.transform.position = position;
 
         var spriteRenderer = ballObject.AddComponent<SpriteRenderer>();
-        spriteRenderer.sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png"); // 画像名を適切に
+        spriteRenderer.sprite = AssetManager.GetAsset<Sprite>("ConjurerStartButton.png");
 
         body = ballObject.AddComponent<Rigidbody2D>();
         body.gravityScale = 0f;
         body.velocity = velocity;
         body.angularDrag = 0f;
         body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+        body.interpolation = RigidbodyInterpolation2D.Interpolate;
 
-        var collider = ballObject.AddComponent<CircleCollider2D>();
-        collider.radius = 0.2f;
-
-        var physicsMaterial = new PhysicsMaterial2D { bounciness = 1.0f, friction = 0.0f };
-        collider.sharedMaterial = physicsMaterial;
-
-        // 衝突検知用のヘルパーコンポーネントを追加
-        collisionHelper = ballObject.AddComponent<RugbyBallCollisionHelper>();
-        collisionHelper.Initialize(this);
 
         fixedUpdateEvent = FixedUpdateEvent.Instance.AddListener(OnFixedUpdate);
     }
 
-    public void OnFixedUpdate()
+    private void OnFixedUpdate()
     {
         if (detached) return;
 
         lifeTime -= Time.fixedDeltaTime;
-        if (lifeTime <= 0 || owner == null || owner.Data.IsDead || isPlayerHit)
+        if (lifeTime <= 0 || owner == null || owner.Data.IsDead)
         {
             Detach();
             return;
         }
 
+        // --- ★自前の壁衝突判定ロジック ---
+        CheckForWallCollision();
+
+        // 進行方向に回転
         if (body != null && body.velocity.sqrMagnitude > 0.1f)
         {
             float angle = Mathf.Atan2(body.velocity.y, body.velocity.x) * Mathf.Rad2Deg;
             ballObject.transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
 
-        // --- ★ホストのみが当たり判定を実行 ---
+        // ホストのみがプレイヤーへの当たり判定を実行
         if (owner.AmOwner)
         {
             CheckForPlayerCollision();
+        }
+    }
+
+    private void CheckForWallCollision()
+    {
+        float speed = body.velocity.magnitude;
+        Vector2 direction = body.velocity.normalized;
+        // 1フレーム先に進んだ位置を予測し、少しだけ長い距離でRayを飛ばす
+        float distance = speed * Time.fixedDeltaTime + 0.1f;
+
+        RaycastHit2D hit = Physics2D.Raycast(ballObject.transform.position, direction, distance, Constants.ShipAndObjectsMask);
+
+        if (hit.collider != null)
+        {
+            // 壁に当たった場合、速度を反射させる
+            Vector2 reflectedVelocity = Vector2.Reflect(body.velocity, hit.normal);
+            body.velocity = reflectedVelocity;
+
+            currentBounces++;
+            // TODO: バウンド音を再生
+
+            if (currentBounces >= maxBounces)
+            {
+                Detach();
+            }
         }
     }
 
@@ -92,20 +109,16 @@ public class RugbyBallObject
 
                 if (!isImpostorTeammate)
                 {
-                    // ★キル処理をRPC経由で実行するように変更
                     RpcKillTarget(owner.PlayerId, target.PlayerId);
-                    isPlayerHit = true; // 命中フラグを立てて、次のフレームでオブジェクトを消す
-                    break; // 一人倒したらループを抜ける
-                }
-                else
-                {
-                    // TODO: 味方インポスターへのスロー効果を後で実装
+                    // ★ isPlayerHitフラグは不要。DetachはRPCを受け取った各クライアントでボールが消えることで実現する。
+                    // サーバー側（ホスト）では次のフレームでDetach()が呼ばれる。
+                    Detach();
+                    break;
                 }
             }
         }
     }
 
-    // ★キルを実行するRPCメソッド
     [CustomRPC]
     public static void RpcKillTarget(byte ownerId, byte targetId)
     {
@@ -114,29 +127,7 @@ public class RugbyBallObject
 
         if (exTarget != null && exOwner != null && exTarget.IsAlive())
         {
-            // 各クライアントが、自分のローカルプレイヤーを"source"としてキルを実行する
-            // これにより、キルアニメーションや死体生成が正しく同期される
-            exOwner.RpcCustomDeath(exTarget, CustomDeathType.WaveCannon);// TODO: CDTのじっそう
-        }
-    }
-
-
-    public void HandleCollision(Collision2D collision)
-    {
-        if (detached) return;
-
-        // プレイヤーとの衝突はFixedUpdateで処理するため、ここでは何もしない
-        if (collision.gameObject.GetComponent<PlayerControl>() != null)
-        {
-            return;
-        }
-
-        collisionHelper.currentBounces++;
-        // TODO: バウンド音
-
-        if (collisionHelper.currentBounces >= maxBounces)
-        {
-            Detach();
+            exOwner.RpcCustomDeath(exTarget, CustomDeathType.RugbyBall);
         }
     }
 
@@ -151,22 +142,5 @@ public class RugbyBallObject
         {
             Object.Destroy(ballObject);
         }
-    }
-}
-
-// 衝突イベントを受け取るためだけのシンプルなMonoBehaviour
-public class RugbyBallCollisionHelper : MonoBehaviour
-{
-    private RugbyBallObject parent;
-    public int currentBounces = 0;
-
-    public void Initialize(RugbyBallObject parent)
-    {
-        this.parent = parent;
-    }
-
-    void OnCollisionEnter2D(Collision2D collision)
-    {
-        parent?.HandleCollision(collision);
     }
 }

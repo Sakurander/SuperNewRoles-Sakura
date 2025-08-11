@@ -210,4 +210,5 @@ public enum CustomDeathType
     SuicideSecrets,
     BuskerFakeDeath,
     SuperWaveCannon,
+    RugbyBall,
 }
