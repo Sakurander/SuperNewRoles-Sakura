@@ -22,42 +22,46 @@ internal interface IButtonEffect
 
     public void OnClick(ActionButton actionButton)
     {
-        if (this.isEffectActive)
+        if (!this.isEffectActive)
         {
-            this.isEffectActive = false;
-        }
-        else
-        {
-            this.EffectTimer = IsEffectDurationInfinity ? 0f : EffectDuration;
-            actionButton.cooldownTimerText.color = color;
             this.isEffectActive = true;
+            this.EffectTimer = this.EffectDuration;
+            actionButton.cooldownTimerText.color = color;
+            Logger.Info($"[IButtonEffect] OnClick: Charge Started. Duration: {this.EffectDuration}");
         }
     }
     public virtual void OnCancel(ActionButton actionButton)
     {
-        if (isEffectActive)
+       if (isEffectActive)
         {
             isEffectActive = false;
-            actionButton.cooldownTimerText.color = Palette.EnabledColor;
-            OnEffectEnds();
+            // OnEffectEnds() は呼ばない（キャンセルなので）
+            Logger.Info("[IButtonEffect] OnCancel: Charge Cancelled.");
         }
     }
 
     public void OnFixedUpdate(ActionButton actionButton)
     {
-        if (EffectTimer >= 0)
+        if (isEffectActive)
         {
-            if (isEffectActive) EffectTimer -= Time.deltaTime;
-        }
-        if (EffectTimer <= 0 && isEffectActive)
-        {
-            actionButton.cooldownTimerText.color = Palette.EnabledColor;
-            if (!IsEffectDurationInfinity || !effectCancellable)
+            // EffectTimerが0より大きい場合のみ減算する
+            if (EffectTimer > 0)
             {
-                isEffectActive = false;
-                OnEffectEnds();
+                EffectTimer -= Time.deltaTime;
+            }
+
+            // EffectTimerが0以下になったら効果終了
+            if (EffectTimer <= 0)
+            {
+                actionButton.cooldownTimerText.color = Palette.EnabledColor;
+                if (!IsEffectDurationInfinity || !effectCancellable)
+                {
+                    isEffectActive = false;
+                    OnEffectEnds();
+                }
             }
         }
+
         this.DoEffect(actionButton);
 
         if (isEffectActive) actionButton.SetCoolDown(EffectTimer, IsEffectDurationInfinity ? 0f : EffectDuration);

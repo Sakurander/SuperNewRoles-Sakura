@@ -262,19 +262,35 @@ public abstract class CustomButtonBase : AbilityBase
     }
     public void OnClickEvent()
     {
-        if (this.Timer <= 0f && CheckIsAvailable() && (buttonEffect == null || !buttonEffect.isEffectActive))
+        // 1. チャージキャンセル処理
+        if (buttonEffect != null && buttonEffect.isEffectActive && buttonEffect.effectCancellable && buttonEffect.IsEffectAvailable())
         {
+            Logger.Info("[CustomButtonBase] OnClickEvent: Handling Cancel");
+            buttonEffect.OnCancel(actionButton);
+            return;
+        }
+
+        // 2. 通常のクリック処理
+        bool isAvailable = CheckIsAvailable();
+        Logger.Info($"[CustomButtonBase] OnClickEvent: Timer <= 0f is {this.Timer <= 0f}, CheckIsAvailable() is {isAvailable}");
+
+        if (this.Timer <= 0f && isAvailable && (buttonEffect == null || !buttonEffect.isEffectActive))
+        {
+            Logger.Info("[CustomButtonBase] OnClickEvent: Handling Click");
+
             actionButton.graphic.color = GrayOut;
+
             this.OnClick();
             this.OnClickEventAction();
-            ResetTimer();
-            if (buttonEffect != null) buttonEffect.OnClick(actionButton);
-        }
-        else if (buttonEffect != null && buttonEffect.isEffectActive && buttonEffect.effectCancellable && buttonEffect.IsEffectAvailable())
-        {
-            actionButton.graphic.color = Palette.EnabledColor;
-            buttonEffect.OnCancel(actionButton);
-            ResetTimer();
+
+            if (buttonEffect != null)
+            {
+                buttonEffect.OnClick(actionButton);
+            }
+            else
+            {
+                ResetTimer();
+            }
         }
     }
     public void SetActive(bool isActive)

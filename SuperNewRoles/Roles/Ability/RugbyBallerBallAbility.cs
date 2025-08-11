@@ -56,15 +56,21 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
     // --- ボタンの振る舞い ---
     public override bool CheckIsAvailable()
     {
-        return PlayerControl.LocalPlayer.CanMove && !isEffectActive;
+        bool canMove = PlayerControl.LocalPlayer.CanMove;
+        bool isActive = isEffectActive;
+        // ★ログ5：ラグビーボーラーの使用可能条件を確認
+        Logger.Info($"[RugbyBallerAbility] CheckIsAvailable: CanMove is {canMove}, isEffectActive is {isActive}");
+        return canMove && !isActive;
     }
 
     public override void OnClick()
     {
+        // チャージの開始はIButtonEffect.OnClickに任せる。
+        Logger.Info("[RugbyBallerAbility] OnClick called. Charge will be started by IButtonEffect.");
         // ボタンが押されたらチャージ開始
-        isEffectActive = true;
+        /*isEffectActive = true;
         EffectTimer = EffectDuration;
-        if (trajectoryLine != null) trajectoryLine.enabled = true;
+        if (trajectoryLine != null) trajectoryLine.enabled = true;*/
     }
 
     // チャージ中にボタンが離された (キャンセル)
@@ -74,13 +80,23 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
         EffectTimer = EffectDuration;
         actionButton.cooldownTimerText.color = Palette.EnabledColor;
         if (trajectoryLine != null) trajectoryLine.enabled = false;
+
+        // キャンセル時はクールダウンをリセットする
+        Timer = 0f;
+        actionButton.SetCoolDown(0f, DefaultTimer);
     }
 
     // 毎フレームの更新処理
     public override void OnUpdate()
     {
         base.OnUpdate();
-        // チャージ中に予測軌道を描画
+
+        // ★ログは残しておく
+        if (isEffectActive)
+        {
+            Logger.Info($"[RugbyBallerAbility] OnUpdate: Charging... isEffectActive={isEffectActive}, EffectTimer={EffectTimer}, EffectDuration={EffectDuration}");
+        }
+
         if (isEffectActive && RugbyBaller.ShowTrajectory)
         {
             UpdateTrajectory();
