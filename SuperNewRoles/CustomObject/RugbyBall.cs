@@ -1,7 +1,9 @@
+using System.Linq;
 using UnityEngine;
 using SuperNewRoles.Modules;
 using SuperNewRoles.Events;
 using SuperNewRoles.Modules.Events.Bases;
+using SuperNewRoles.Roles.Impostor; // CustomDeathType.Rugby のため
 
 namespace SuperNewRoles.CustomObject;
 
@@ -16,6 +18,7 @@ public class RugbyBallObject
     private Rigidbody2D body;
     private EventListener fixedUpdateEvent;
     private RugbyBallCollisionHelper collisionHelper;
+    private bool isPlayerHit = false; // プレイヤーに命中したかどうかのフラグ
 
     public RugbyBallObject(PlayerControl owner, Vector3 position, Vector2 velocity, int maxBounces)
     {
@@ -56,7 +59,7 @@ public class RugbyBallObject
         if (detached) return;
 
         lifeTime -= Time.fixedDeltaTime;
-        if (lifeTime <= 0 || owner == null || owner.Data.IsDead)
+        if (lifeTime <= 0 || owner == null || owner.Data.IsDead || isPlayerHit)
         {
             Detach();
             return;
@@ -67,28 +70,67 @@ public class RugbyBallObject
             float angle = Mathf.Atan2(body.velocity.y, body.velocity.x) * Mathf.Rad2Deg;
             ballObject.transform.rotation = Quaternion.AngleAxis(angle, Vector3.forward);
         }
+
+        // --- ★ホストのみが当たり判定を実行 ---
+        if (owner.AmOwner)
+        {
+            CheckForPlayerCollision();
+        }
     }
 
-    // ヘルパーコンポーネントから呼び出される
+    // 波動砲のロジックを参考にした当たり判定
+    private void CheckForPlayerCollision()
+    {// IsTouchingAllは重いので、OverlapCircleで代用
+        Collider2D[] hitColliders = Physics2D.OverlapCircleAll(ballObject.transform.position, 0.2f, Constants.PlayersOnlyMask);
+
+        foreach (var hitCollider in hitColliders)
+        {
+            PlayerControl target = hitCollider.GetComponent<PlayerControl>();
+            if (target != null && target.PlayerId != owner.PlayerId && !target.Data.IsDead)
+            {
+                bool isImpostorTeammate = target.Data.Role.IsImpostor && owner.Data.Role.IsImpostor;
+
+                if (!isImpostorTeammate)
+                {
+                    // ★キル処理をRPC経由で実行するように変更
+                    RpcKillTarget(owner.PlayerId, target.PlayerId);
+                    isPlayerHit = true; // 命中フラグを立てて、次のフレームでオブジェクトを消す
+                    break; // 一人倒したらループを抜ける
+                }
+                else
+                {
+                    // TODO: 味方インポスターへのスロー効果を後で実装
+                }
+            }
+        }
+    }
+
+    // ★キルを実行するRPCメソッド
+    [CustomRPC]
+    public static void RpcKillTarget(byte ownerId, byte targetId)
+    {
+        ExPlayerControl exOwner = ExPlayerControl.ById(ownerId);
+        ExPlayerControl exTarget = ExPlayerControl.ById(targetId);
+
+        if (exTarget != null && exOwner != null && exTarget.IsAlive())
+        {
+            // 各クライアントが、自分のローカルプレイヤーを"source"としてキルを実行する
+            // これにより、キルアニメーションや死体生成が正しく同期される
+            exOwner.RpcCustomDeath(exTarget, CustomDeathType.WaveCannon);// TODO: CDTのじっそう
+        }
+    }
+
+
     public void HandleCollision(Collision2D collision)
     {
         if (detached) return;
 
-        PlayerControl target = collision.gameObject.GetComponent<PlayerControl>();
-        if (target != null)
+        // プレイヤーとの衝突はFixedUpdateで処理するため、ここでは何もしない
+        if (collision.gameObject.GetComponent<PlayerControl>() != null)
         {
-            //if (target.PlayerId == owner.PlayerId || (target.Data.Role.IsImpostor && owner.Data.Role.IsImpostor)) return;
-
-            if (!target.Data.IsDead)
-            {
-                Logger.Info($"[RugbyBallObject] Hit Player: {target.PlayerId} by {owner.PlayerId}");
-                // ModHelpers.CheckMurderAttemptAndKill(owner, target, showAnimation: false, CustomDeathType.Rugby);
-            }
-            Detach(); // プレイヤーに当たったら消滅
             return;
         }
 
-        // 壁に当たった場合
         collisionHelper.currentBounces++;
         // TODO: バウンド音
 
