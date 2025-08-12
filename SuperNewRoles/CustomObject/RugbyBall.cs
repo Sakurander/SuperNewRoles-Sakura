@@ -1,5 +1,3 @@
-// SuperNewRoles/CustomObject/RugbyBallObject.cs
-
 using UnityEngine;
 using SuperNewRoles.Modules;
 using SuperNewRoles.Events;
@@ -171,7 +169,7 @@ public class RugbyBallObject
 
         if (exTarget != null && exOwner != null && exTarget.IsAlive())
         {
-            exOwner.RpcCustomDeath(exTarget, CustomDeathType.Kill); // いずれ RugbyBall に変更
+            exOwner.RpcCustomDeath(exTarget, CustomDeathType.RugbyBall);
         }
     }
 

@@ -42,6 +42,10 @@ class RugbyBaller : RoleBase<RugbyBaller>
     [CustomOptionFloat("RugbyBallerShootDuration", 0f, 10f, 0.25f, 2.0f)]
     public static float ShootDuration;
 
+    // ボールの速度
+    [CustomOptionFloat("RugbyBallerBallSpeed", 5f, 30f, 1f, 15f)]
+    public static float BallSpeed;
+
     // ボールの最大反射回数	ボールが壁に反射できる上限回数（回）
     [CustomOptionInt("RugbyBallerMaxBounceCount", 1, 10, 1, 4)]
     public static int MaxBounceCount;

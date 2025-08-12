@@ -84,8 +84,7 @@ public class RugbyBallerBallAbility : CustomButtonBase, IButtonEffect
             shotForward = PlayerControl.LocalPlayer.MyPhysics.FlipX ? Vector3.left : Vector3.right;
         }
 
-
-        float ballSpeed = 15f;
+        float ballSpeed = RugbyBaller.BallSpeed;
         Vector2 velocity = shotForward * ballSpeed;
 
         RpcSpawnRugbyBall(PlayerControl.LocalPlayer, PlayerControl.LocalPlayer.GetTruePosition(), velocity, RugbyBaller.MaxBounceCount);
