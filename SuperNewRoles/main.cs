@@ -319,14 +319,6 @@ public partial class SuperNewRolesPlugin : BasePlugin
                 }
             }
         }
-
-        // まだ言語チェックを行っていない場合
-        if (!_isLanguageChecked && TranslationController.InstanceExists)
-        {
-            SuperNewRoles.Logger.Info("Game language is ready. Forcing translation update.", "Mod Translation");
-            ModTranslation.UpdateCurrentTranslations();
-            _isLanguageChecked = true; // チェックは一度だけで良い
-        }
     }
 
     [HarmonyPatch(typeof(PlayerBanData), nameof(PlayerBanData.IsBanned), MethodType.Getter)]

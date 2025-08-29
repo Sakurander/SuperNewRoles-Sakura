@@ -476,34 +476,40 @@ public static unsafe partial class ModTranslation
         return text.Replace("\\n", "\n");
     }
 
+    // in ModTranslation.cs
     private static SupportedLangs GetCurrentSupportedLang()
     {
         // Prefer explicit test override (unit tests should not touch IL2CPP DataManager)
         if (TestLanguageOverride.HasValue)
             return TestLanguageOverride.Value;
 
-        // 本体から正常に言語を取得できた場合
-        if (TranslationController.InstanceExists)
+        // --- ここから書き換え ---
+
+        // 1. まずキャッシュから読み込みを試みる (これが起動直後のための処理)
+        var cachedLang = Modules.LanguageCacheManager.Read();
+
+        // 2. DataManagerから現在の言語設定を取得
+        var gameLang = DataManager.Settings.Language.CurrentLanguage;
+
+        // 3. DataManagerの言語が有効な値(English以外)に設定されているか、
+        //    またはキャッシュが存在しない場合、DataManagerの値を優先する
+        if (gameLang != SupportedLangs.English || !cachedLang.HasValue)
         {
-            var gameLang = DataManager.Settings.Language.CurrentLanguage;
-            // 取得した言語をキャッシュに書き込む
+            // 現在の正しい言語をキャッシュに書き込む
             Modules.LanguageCacheManager.Write(gameLang);
             return gameLang;
         }
 
-        // --- 本体から言語を取得できなかった場合の処理 (起動直後など) ---
-        Logger.Info("Game language not ready. Attempting to read from cache.", "Mod Translation");
-
-        // キャッシュから読み込みを試みる
-        var cachedLang = Modules.LanguageCacheManager.Read();
+        // 4. DataManagerがまだデフォルト値(English)で、かつ有効なキャッシュがある場合
+        //    起動直後と判断し、キャッシュの値を優先する
         if (cachedLang.HasValue)
         {
             return cachedLang.Value;
         }
 
-        // キャッシュも無い、または読めなかった場合のフォールバック
-        Logger.Warning("Cache is not available. Falling back to Japanese.", "Mod Translation");
-        return SupportedLangs.Japanese; // 応急処置として日本語を返す
+        // 5. どちらもダメだった場合の最終フォールバック
+        return SupportedLangs.English;
+        // --- ここまで書き換え ---
     }
 
     public static void UpdateCurrentTranslations()
