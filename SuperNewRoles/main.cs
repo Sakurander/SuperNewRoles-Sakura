@@ -294,6 +294,8 @@ public partial class SuperNewRolesPlugin : BasePlugin
         }
     }
 
+    private bool _isLanguageChecked = false;
+
     public void Update()
     {
         if (_mainThreadActions.Count > 0)
@@ -316,6 +318,14 @@ public partial class SuperNewRolesPlugin : BasePlugin
                     Logger.LogError($"Error executing action on main thread: {e}");
                 }
             }
+        }
+
+        // まだ言語チェックを行っていない場合
+        if (!_isLanguageChecked && TranslationController.InstanceExists)
+        {
+            SuperNewRoles.Logger.Info("Game language is ready. Forcing translation update.", "Mod Translation");
+            ModTranslation.UpdateCurrentTranslations();
+            _isLanguageChecked = true; // チェックは一度だけで良い
         }
     }
 

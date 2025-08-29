@@ -481,22 +481,29 @@ public static unsafe partial class ModTranslation
         // Prefer explicit test override (unit tests should not touch IL2CPP DataManager)
         if (TestLanguageOverride.HasValue)
             return TestLanguageOverride.Value;
-        try
+
+        // 本体から正常に言語を取得できた場合
+        if (TranslationController.InstanceExists)
         {
-            switch (DataManager.Settings.Language.CurrentLanguage)
-            {
-                case SupportedLangs.Japanese:
-                case SupportedLangs.SChinese:
-                case SupportedLangs.TChinese:
-                    return DataManager.Settings.Language.CurrentLanguage;
-                default:
-                    return SupportedLangs.English;
-            }
+            var gameLang = DataManager.Settings.Language.CurrentLanguage;
+            // 取得した言語をキャッシュに書き込む
+            Modules.LanguageCacheManager.Write(gameLang);
+            return gameLang;
         }
-        catch
+
+        // --- 本体から言語を取得できなかった場合の処理 (起動直後など) ---
+        Logger.Info("Game language not ready. Attempting to read from cache.", "Mod Translation");
+
+        // キャッシュから読み込みを試みる
+        var cachedLang = Modules.LanguageCacheManager.Read();
+        if (cachedLang.HasValue)
         {
-            return SupportedLangs.English;
+            return cachedLang.Value;
         }
+
+        // キャッシュも無い、または読めなかった場合のフォールバック
+        Logger.Warning("Cache is not available. Falling back to Japanese.", "Mod Translation");
+        return SupportedLangs.Japanese; // 応急処置として日本語を返す
     }
 
     public static void UpdateCurrentTranslations()
